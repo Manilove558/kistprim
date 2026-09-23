@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, Download, MessageCircle, Share2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { images as initialImages, type GalleryImage } from '@/lib/gallery-data'
 
 // Yeh "copy" text hai — nav, hero banner, footer me dikhne wala saara
@@ -14,13 +14,6 @@ type Copy = {
   footerHint: string
   journal: string
   photoCount: string
-}
-
-// Download hone wali file ka naam, jaise "solasta-2-quiet-portrait.jpg"
-function downloadName(image: GalleryImage, index: number) {
-  const extension = image.src.split('.').pop() ?? 'jpg'
-  const slug = image.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-  return `solasta-${index + 1}-${slug}.${extension}`
 }
 
 export default function Page() {
@@ -53,61 +46,6 @@ export default function Page() {
 
   // activeImage = jo photo abhi lightbox me dikh rahi hai (agar koi khuli hai)
   const activeImage = activeIndex === null ? null : galleryImages[activeIndex]
-
-  // ----------------------------------------------------------------
-  // DOWNLOAD / SHARE
-  // ----------------------------------------------------------------
-  // canNativeShare = phone/browser ka apna share sheet available hai ya nahi.
-  // Phone par is sheet me WhatsApp, Instagram, Telegram wagairah sab dikhte hain.
-  // (Instagram web link se seedha post nahi ho sakta — sirf isi share sheet se hota hai.)
-  const [canNativeShare, setCanNativeShare] = useState(false)
-  // shareFile = lightbox me khuli photo ki file, pehle se ready rakhi jaati hai
-  // taaki Share dabate hi turant khule (phone browsers ko click ke turant baad share chahiye).
-  const [shareFile, setShareFile] = useState<File | null>(null)
-
-  useEffect(() => {
-    setCanNativeShare(typeof navigator !== 'undefined' && typeof navigator.share === 'function')
-  }, [])
-
-  // Nayi photo lightbox me khulte hi uski file fetch karke ready rakho.
-  useEffect(() => {
-    setShareFile(null)
-    if (!canNativeShare || activeIndex === null) return
-    const image = galleryImages[activeIndex]
-    let cancelled = false
-    fetch(image.src)
-      .then((response) => response.blob())
-      .then((blob) => {
-        if (!cancelled) setShareFile(new File([blob], downloadName(image, activeIndex), { type: blob.type }))
-      })
-      .catch(() => {}) // file na mile to share sirf link bhejega
-    return () => {
-      cancelled = true
-    }
-  }, [activeIndex, canNativeShare, galleryImages])
-
-  // Photo ka link + caption — share text me yahi jaata hai.
-  const shareText = (image: GalleryImage) => `${image.title} — Solasta, KIST Batch 26`
-  const absoluteUrl = (path: string) => new URL(path, window.location.origin).toString()
-
-  // Share button: phone ka share sheet kholta hai (photo file ke saath, agar ho sake).
-  const handleShare = async (image: GalleryImage) => {
-    try {
-      if (shareFile && navigator.canShare?.({ files: [shareFile] })) {
-        await navigator.share({ files: [shareFile], title: image.title, text: shareText(image) })
-      } else {
-        await navigator.share({ title: image.title, text: shareText(image), url: absoluteUrl(image.src) })
-      }
-    } catch {
-      // user ne share sheet band kar di — kuch nahi karna
-    }
-  }
-
-  // WhatsApp button: WhatsApp me photo ka link + caption ke saath message khulta hai.
-  const handleWhatsApp = (image: GalleryImage) => {
-    const message = `${shareText(image)}\n${absoluteUrl(image.src)}`
-    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
-  }
 
   // Lightbox khule rehte waqt keyboard se control: Esc = band karo,
   // Left/Right arrow keys = previous/next photo par jao.
@@ -281,24 +219,6 @@ export default function Page() {
               <span>{String(activeIndex + 1).padStart(2, '0')} / {String(galleryImages.length).padStart(2, '0')}</span>
               <strong>{activeImage.title}</strong>
               <small>{activeImage.detail}</small>
-            </div>
-            {/* Download / Share / WhatsApp — lightbox me khuli photo ke liye */}
-            <div className="lightbox-actions">
-              <a
-                className="lightbox-action"
-                href={activeImage.src}
-                download={downloadName(activeImage, activeIndex)}
-              >
-                <Download size={16} /> Download
-              </a>
-              {canNativeShare && (
-                <button className="lightbox-action" onClick={() => handleShare(activeImage)}>
-                  <Share2 size={16} /> Share
-                </button>
-              )}
-              <button className="lightbox-action" onClick={() => handleWhatsApp(activeImage)}>
-                <MessageCircle size={16} /> WhatsApp
-              </button>
             </div>
           </div>
           <button
