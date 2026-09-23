@@ -6,9 +6,43 @@ import './globals.css'
 // i have aded
 const googleSans = Google_Sans({ subsets: ['latin'], variable: '--font-title' })
 
+// Site ka asli URL. OG image ka poora (absolute) link isi se banta hai.
+// Netlify apne aap `URL` env var deta hai; custom domain ho to
+// NEXT_PUBLIC_SITE_URL me daal dena (jaise https://solasta.kist.edu.in).
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.URL ?? 'http://localhost:3000'
+
+const siteTitle = 'Solasta — Batch 26 Freshers Party | KIST'
+const siteDescription =
+  'A premium photo gallery from Solasta — the Batch 26 freshers party at Konark Institute Of Science And Technology.'
+
 export const metadata: Metadata = {
-  title: "Konark Institute Of Science And Technology",
-  description: 'A premium photo gallery from Solasta — the Batch 26 freshers party at Konark Institute Of Science And Technology.',
+  metadataBase: new URL(siteUrl),
+  title: "Konark Institute Of Science And Technology", // browser tab ka title (pehle jaisa)
+  description: siteDescription,
+  // Open Graph: WhatsApp, Instagram, Facebook, LinkedIn link preview (photo + title) yahin se banta hai.
+  openGraph: {
+    type: 'website',
+    siteName: 'Solasta — KIST',
+    title: siteTitle,
+    description: siteDescription,
+    url: '/',
+    locale: 'en_IN',
+    images: [
+      {
+        url: '/og-image.jpg', // public/og-image.jpg (1200x630 — link preview ke liye best size)
+        width: 1200,
+        height: 630,
+        alt: 'Solasta — the Batch 26 freshers party at Konark Institute Of Science And Technology',
+      },
+    ],
+  },
+  // Twitter/X aur kuch aur apps isi tag se preview banate hain.
+  twitter: {
+    card: 'summary_large_image',
+    title: siteTitle,
+    description: siteDescription,
+    images: ['/og-image.jpg'],
+  },
   icons: {
     icon: [
       {
