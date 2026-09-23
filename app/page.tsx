@@ -21,8 +21,11 @@ export default function Page() {
   // null = koi photo open nahi hai (lightbox band hai).
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
-  // galleryImages = lib/gallery-data.ts ki poori images list (hero photo samet).
-  const [galleryImages] = useState<GalleryImage[]>(initialImages)
+  // heroImage = gallery-data.ts ki PEHLI photo — sirf top (hero) me dikhegi.
+  // galleryImages = baaki saari photos — grid aur lightbox sirf inhi ko dikhayenge,
+  // isliye hero photo lightbox me kabhi nahi khulegi.
+  const [heroImage] = useState<GalleryImage>(initialImages[0])
+  const [galleryImages] = useState<GalleryImage[]>(initialImages.slice(1))
 
   // scrollFade: 1 = hero text pura visible, 0 = pura fade/gayab.
   // Scroll karte hi neeche wale useEffect se ye value dheere-dheere 1 se 0 hoti hai.
@@ -97,11 +100,11 @@ export default function Page() {
 
       {/* ---------------------------------------------------------- */}
       {/* HERO — bada banner: background photo + title + subtitle     */}
-      {/* Background photo hamesha galleryImages[0] (yaani gallery-data.ts */}
-      {/* ke array ka PEHLA item) se aati hai — usse hi badal jayegi.  */}
+      {/* Background photo heroImage (gallery-data.ts ka PEHLA item) hai. */}
+      {/* Ye sirf yahin dikhti hai, gallery/lightbox me nahi.            */}
       {/* ---------------------------------------------------------- */}
       <header className="hero" id="top">
-        <img className="hero-media" src={galleryImages[0].src} alt="" aria-hidden="true" />
+        <img className="hero-media" src={heroImage.src} alt="" aria-hidden="true" />
         <div className="hero-scrim" />
         <div
           className="hero-content"
@@ -132,17 +135,12 @@ export default function Page() {
           </div>
 
           <div className="gallery-grid" aria-label="Photo gallery">
-            {/* .slice(1) → pehli image (jo hero me use ho rahi hai) ko grid
-                se hide kar deta hai, taaki wo dobara neeche na dikhe.
-                Poori list dikhani ho to .slice(1) hata dena. */}
-            {galleryImages.slice(1).map((image, index) => (
+            {/* galleryImages me hero photo shamil nahi hai (upar slice(1) se hata di gayi). */}
+            {galleryImages.map((image, index) => (
               <button
                 className={`gallery-card card-${index + 1}`}
                 key={`${image.src}-${index}`}
-                // index + 1 isliye, kyunki slice(1) ke baad "index" 0 se shuru
-                // hota hai, lekin lightbox ko original (hero-samet) array
-                // ka sahi number chahiye — warna lightbox me galat photo khulegi.
-                onClick={() => setActiveIndex(index + 1)}
+                onClick={() => setActiveIndex(index)}
                 aria-label={`View ${image.title} fullscreen`}
               >
                 <span className="frame">
