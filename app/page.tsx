@@ -41,7 +41,7 @@ export default function Page() {
     date: '19 September 2026',                              // hero ke neeche date
     footerHint: 'Thank you for celebrating with us.',        // footer ka left text
     journal: 'Get in touch',                                 // nav + footer ka link text
-    photoCount: `${galleryImages.length} photographs`,       // photo count auto-calculate hoti hai
+    photoCount: `${galleryImages.length} photographs`,       // sirf gallery ki photos ginti hai (hero photo shamil nahi)
   })
 
   // activeImage = jo photo abhi lightbox me dikh rahi hai (agar koi khuli hai)
@@ -104,7 +104,15 @@ export default function Page() {
       {/* Ye sirf yahin dikhti hai, gallery/lightbox me nahi.            */}
       {/* ---------------------------------------------------------- */}
       <header className="hero" id="top">
-        <img className="hero-media" src={heroImage.src} alt="" aria-hidden="true" />
+        {/* Hero photo screen ke top par hai, isliye lazy NAHI — turant load hoti hai. */}
+        <img
+          className="hero-media"
+          src={heroImage.src}
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          fetchPriority="high"
+        />
         <div className="hero-scrim" />
         <div
           className="hero-content"
@@ -144,7 +152,14 @@ export default function Page() {
                 aria-label={`View ${image.title} fullscreen`}
               >
                 <span className="frame">
-                  <img className="gallery-photo" src={image.src} alt={image.title} />
+                  {/* loading="lazy" = photo tabhi load hogi jab user scroll karke uske paas pahunche. */}
+                  <img
+                    className="gallery-photo"
+                    src={image.src}
+                    alt={image.title}
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </span>
                 <span className="card-caption">
                   <strong>{image.title}</strong>
