@@ -1,0 +1,6 @@
+# The Next.js runtime plugin is applied automatically by Netlify.
+# The build command is pinned here so it does not depend on pnpm being
+# present in the build image; npm is always available and runs the same
+# "build" script from package.json.
+[build]
+  command = "npm run build"
