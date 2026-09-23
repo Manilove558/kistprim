@@ -41,7 +41,7 @@ export default function Page() {
     date: '19 September 2026',                              // hero ke neeche date
     footerHint: 'Thank you for celebrating with us.',        // footer ka left text
     journal: 'Get in touch',                                 // nav + footer ka link text
-    photoCount: `${initialImages.length} photographs`,       // photo count auto-calculate hoti hai
+    photoCount: `${galleryImages.length} photographs`,       // photo count auto-calculate hoti hai
   })
 
   // activeImage = jo photo abhi lightbox me dikh rahi hai (agar koi khuli hai)
