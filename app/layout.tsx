@@ -79,6 +79,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        {/* Yeh chhota script body render hone SE PEHLE chalta hai, taaki page load
+            hote hi "flash" na ho (galat theme ek second dikh kar phir badal jaye).
+            Pehle localStorage me saved choice dekhta hai; nahi mile to system
+            (phone/laptop) ka prefers-color-scheme use karta hai. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className={`antialiased ${googleSans.variable}`}>
         {children}
         {process.env.NODE_ENV === 'production' && gaId && <GoogleAnalytics gaId={gaId} />}

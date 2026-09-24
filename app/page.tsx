@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Moon, Sun, X, Plus, LogOut, Trash2, ShieldCheck } from 'lucide-react'
 import { images as initialImages, type GalleryImage } from '@/lib/gallery-data'
+import AdminLogin from '@/components/admin/AdminLogin'
+import AdminUpload from '@/components/admin/AdminUpload'
+import { isAdminLoggedIn, clearAdminSession } from '@/lib/admin-auth'
 
-// Yeh "copy" text hai — nav, hero banner, footer me dikhne wala saara
-// wording ek jagah. Yahan text change karoge to page par turant dikhega.
 type Copy = {
   eyebrow: string
   title: string
@@ -13,42 +14,70 @@ type Copy = {
   date: string
   footerHint: string
   journal: string
-  photoCount: string
+}
+
+const GALLERY_STORE_KEY = 'kist_custom_gallery'
+
+function loadGallery(): GalleryImage[] {
+  try {
+    const raw = localStorage.getItem(GALLERY_STORE_KEY)
+    if (raw) {
+      const custom = JSON.parse(raw) as GalleryImage[]
+      // custom photos sabse upar (nayi post pehle dikhe)
+      return [...custom, ...initialImages.slice(1)]
+    }
+  } catch {}
+  return initialImages.slice(1)
+}
+
+function saveCustomGallery(all: GalleryImage[]) {
+  try {
+    // sirf admin dwara add ki gayi photos save karo (initial wali nahi)
+    const initialSrcs = new Set(initialImages.map(i => i.src))
+    const custom = all.filter(i => !initialSrcs.has(i.src) || i.src.startsWith('data:'))
+    // data: wali sab custom hain; initial src wali ko hatao agar woh custom nahi
+    const onlyCustom = all.filter(img => img.src.startsWith('data:'))
+    localStorage.setItem(GALLERY_STORE_KEY, JSON.stringify(onlyCustom))
+  } catch {}
 }
 
 export default function Page() {
-  // activeIndex batata hai ki kaunsi photo abhi lightbox (fullscreen popup) me khuli hai.
-  // null = koi photo open nahi hai (lightbox band hai).
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
-
-  // heroImage = gallery-data.ts ki PEHLI photo — sirf top (hero) me dikhegi.
-  // galleryImages = baaki saari photos — grid aur lightbox sirf inhi ko dikhayenge,
-  // isliye hero photo lightbox me kabhi nahi khulegi.
   const [heroImage] = useState<GalleryImage>(initialImages[0])
-  const [galleryImages] = useState<GalleryImage[]>(initialImages.slice(1))
-
-  // scrollFade: 1 = hero text pura visible, 0 = pura fade/gayab.
-  // Scroll karte hi neeche wale useEffect se ye value dheere-dheere 1 se 0 hoti hai.
+  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>(initialImages.slice(1))
   const [scrollFade, setScrollFade] = useState(1)
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark')
 
-  // ----------------------------------------------------------------
-  // Yahan se hero banner aur footer ka saara TEXT edit karo.
-  // ----------------------------------------------------------------
+  // Admin states
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [showLogin, setShowLogin] = useState(false)
+  const [showUpload, setShowUpload] = useState(false)
+
+  useEffect(() => {
+    const current = document.documentElement.getAttribute('data-theme')
+    if (current === 'light' || current === 'dark') setTheme(current)
+    setIsAdmin(isAdminLoggedIn())
+    setGalleryImages(loadGallery())
+  }, [])
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    document.documentElement.setAttribute('data-theme', next)
+    try { localStorage.setItem('theme', next) } catch {}
+  }
+
   const [copy] = useState<Copy>({
-    eyebrow: 'Konark Institute Of Science And Technology', // hero title ke upar wala chhota label
-    title: 'SOLASTA',                                       // hero ka bada heading
-    headerCopy: 'The freshers party of Batch 26 —\ncaptured in a single night.', // heading ke neeche subtitle (\n = line break)
-    date: '19 September 2026',                              // hero ke neeche date
-    footerHint: 'Thank you for celebrating with us.',        // footer ka left text
-    journal: 'Get in touch',                                 // nav + footer ka link text
-    photoCount: `${galleryImages.length} photographs`,       // sirf gallery ki photos ginti hai (hero photo shamil nahi)
+    eyebrow: 'Konark Institute Of Science And Technology',
+    title: 'SOLASTA',
+    headerCopy: 'The freshers party of Batch 26 —\ncaptured in a single night.',
+    date: '19 September 2026',
+    footerHint: 'Thank you for celebrating with us.',
+    journal: 'Get in touch',
   })
 
-  // activeImage = jo photo abhi lightbox me dikh rahi hai (agar koi khuli hai)
   const activeImage = activeIndex === null ? null : galleryImages[activeIndex]
 
-  // Lightbox khule rehte waqt keyboard se control: Esc = band karo,
-  // Left/Right arrow keys = previous/next photo par jao.
   useEffect(() => {
     if (activeIndex === null) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -56,7 +85,7 @@ export default function Page() {
       if (event.key === 'ArrowRight') setActiveIndex((activeIndex + 1) % galleryImages.length)
       if (event.key === 'ArrowLeft') setActiveIndex((activeIndex - 1 + galleryImages.length) % galleryImages.length)
     }
-    document.body.style.overflow = 'hidden' // lightbox khule waqt background scroll band
+    document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', onKeyDown)
     return () => {
       document.body.style.overflow = ''
@@ -64,8 +93,6 @@ export default function Page() {
     }
   }, [activeIndex, galleryImages.length])
 
-  // Scroll hote hi hero text ka fade + subtle upward drift calculate karta hai.
-  // fadeDistance = kitne pixels scroll karne par text 100% gayab ho jayega.
   useEffect(() => {
     const fadeDistance = 400
     const handleScroll = () => {
@@ -76,35 +103,68 @@ export default function Page() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
+  const handleAddPhoto = (img: GalleryImage) => {
+    const updated = [img, ...galleryImages]
+    setGalleryImages(updated)
+    saveCustomGallery(updated)
+  }
+
+  const handleDelete = (index: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('Ye photo delete karein?')) return
+    const updated = galleryImages.filter((_, i) => i !== index)
+    setGalleryImages(updated)
+    saveCustomGallery(updated)
+    if (activeIndex !== null) setActiveIndex(null)
+  }
+
+  const handleLogout = () => {
+    clearAdminSession()
+    setIsAdmin(false)
+  }
+
   return (
     <main>
-      {/* ---------------------------------------------------------- */}
-      {/* NAV — sabse upar sticky bar: logo + "KIST" (left), link (right) */}
-      {/* ---------------------------------------------------------- */}
       <nav className="site-nav">
         <a className="nav-mark" href="#top">
-          {/* Logo image — path change karke koi aur logo bhi laga sakte ho.
-              Size CSS me .nav-logo class se control hota hai. */}
           <img className="nav-logo" src="/apple-icon.png" alt="KIST logo" />
           KIST
         </a>
-        <a
-          className="nav-link"
-          href="https://www.instagram.com/reel/DdYwxvXgfjW/?stkn=MXhpMW9jNjVubmVocg=="
-          target="_blank"
-          rel="noreferrer"
-        >
-          {copy.journal}
-        </a>
+        <div className="nav-right">
+          {isAdmin ? (
+            <>
+              <button className="admin-nav-btn" onClick={() => setShowUpload(true)}>
+                <Plus size={14} /> Photo Post
+              </button>
+              <button className="admin-nav-btn ghost" onClick={handleLogout} title="Logout">
+                <LogOut size={14} /> Logout
+              </button>
+              <span className="admin-badge"><ShieldCheck size={12} /> Admin</span>
+            </>
+          ) : (
+            <button className="admin-nav-btn ghost" onClick={() => setShowLogin(true)}>
+              <ShieldCheck size={14} /> Admin Login
+            </button>
+          )}
+          <a
+            className="nav-link"
+            href="https://www.instagram.com/reel/DdYwxvXgfjW/?stkn=MXhpMW9jNjVubmVocg=="
+            target="_blank"
+            rel="noreferrer"
+          >
+            {copy.journal}
+          </a>
+          <button
+            className="theme-toggle"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <Sun /> : <Moon />}
+          </button>
+        </div>
       </nav>
 
-      {/* ---------------------------------------------------------- */}
-      {/* HERO — bada banner: background photo + title + subtitle     */}
-      {/* Background photo heroImage (gallery-data.ts ka PEHLA item) hai. */}
-      {/* Ye sirf yahin dikhti hai, gallery/lightbox me nahi.            */}
-      {/* ---------------------------------------------------------- */}
       <header className="hero" id="top">
-        {/* Hero photo screen ke top par hai, isliye lazy NAHI — turant load hoti hai. */}
         <img
           className="hero-media"
           src={heroImage.src}
@@ -116,7 +176,6 @@ export default function Page() {
         <div className="hero-scrim" />
         <div
           className="hero-content"
-          // Scroll ke saath text fade-out + thoda upar drift hota hai
           style={{
             opacity: scrollFade,
             transform: `translateY(${(1 - scrollFade) * 24}px)`,
@@ -127,52 +186,61 @@ export default function Page() {
           <p className="hero-copy">{copy.headerCopy}</p>
           <div className="hero-meta">
             <span>{copy.date}</span>
-            <span>{copy.photoCount}</span>
+            <span>{galleryImages.length} photographs</span>
           </div>
+          {isAdmin && (
+            <button className="hero-post-btn" onClick={() => setShowUpload(true)}>
+              <Plus size={16} /> Nayi Photo Post karein
+            </button>
+          )}
         </div>
       </header>
 
       <div className="gallery-shell">
-        {/* -------------------------------------------------------- */}
-        {/* GALLERY GRID — hero ke neeche wala photo grid             */}
-        {/* -------------------------------------------------------- */}
         <section className="gallery-section">
           <div className="gallery-section-head">
             <h2>The gallery</h2>
             <p>Every frame from the night, in order.</p>
+            {isAdmin && <p className="admin-note">Admin mode: photos par delete button dikhega.</p>}
           </div>
 
           <div className="gallery-grid" aria-label="Photo gallery">
-            {/* galleryImages me hero photo shamil nahi hai (upar slice(1) se hata di gayi). */}
             {galleryImages.map((image, index) => (
-              <button
-                className={`gallery-card card-${index + 1}`}
-                key={`${image.src}-${index}`}
-                onClick={() => setActiveIndex(index)}
-                aria-label={`View ${image.title} fullscreen`}
-              >
-                <span className="frame">
-                  {/* loading="lazy" = photo tabhi load hogi jab user scroll karke uske paas pahunche. */}
-                  <img
-                    className="gallery-photo"
-                    src={image.src}
-                    alt={image.alt}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </span>
-                <span className="card-caption">
-                  <strong>{image.title}</strong>
-                  <small>{image.detail}</small>
-                </span>
-              </button>
+              <div key={`${image.src}-${index}`} className="gallery-card-wrap">
+                <button
+                  className={`gallery-card card-${index + 1}`}
+                  onClick={() => setActiveIndex(index)}
+                  aria-label={`View ${image.title} fullscreen`}
+                >
+                  <span className="frame">
+                    <img
+                      className="gallery-photo"
+                      src={image.src}
+                      alt={image.alt}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  </span>
+                  <span className="card-caption">
+                    <strong>{image.title}</strong>
+                    <small>{image.detail}</small>
+                  </span>
+                </button>
+                {isAdmin && (
+                  <button
+                    className="delete-btn"
+                    onClick={(e) => handleDelete(index, e)}
+                    aria-label="Delete photo"
+                    title="Delete"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </section>
 
-        {/* -------------------------------------------------------- */}
-        {/* FOOTER — gallery ke sabse neeche wali line                */}
-        {/* -------------------------------------------------------- */}
         <footer className="gallery-footer">
           <span>{copy.footerHint}</span>
           <a
@@ -186,18 +254,13 @@ export default function Page() {
         </footer>
       </div>
 
-      {/* ---------------------------------------------------------- */}
-      {/* LIGHTBOX — photo par click karne se khulne wala fullscreen popup */}
-      {/* Sirf tab render hota hai jab activeIndex null nahi hai       */}
-      {/* (yaani jab tak koi photo click nahi hui, ye poora block screen par nahi aata) */}
-      {/* ---------------------------------------------------------- */}
       {activeImage && activeIndex !== null && (
         <div
           className="lightbox"
           role="dialog"
           aria-modal="true"
           aria-label={`${activeImage.title} fullscreen view`}
-          onClick={() => setActiveIndex(null)} // background par click = popup band
+          onClick={() => setActiveIndex(null)}
         >
           <button className="close-lightbox" onClick={() => setActiveIndex(null)} aria-label="Close fullscreen image">
             <X size={20} />
@@ -205,7 +268,7 @@ export default function Page() {
           <button
             className="lightbox-arrow previous"
             onClick={(event) => {
-              event.stopPropagation() // taaki click background tak na pahunche aur popup band na ho
+              event.stopPropagation()
               setActiveIndex((activeIndex - 1 + galleryImages.length) % galleryImages.length)
             }}
             aria-label="Previous image"
@@ -215,7 +278,6 @@ export default function Page() {
           <div className="lightbox-content" onClick={(event) => event.stopPropagation()}>
             <img className="lightbox-image" src={activeImage.src} alt={activeImage.alt} />
             <div className="lightbox-caption">
-              {/* "01 / 06" jaisa counter — padStart(2, '0') number ko 2-digit banata hai */}
               <span>{String(activeIndex + 1).padStart(2, '0')} / {String(galleryImages.length).padStart(2, '0')}</span>
               <strong>{activeImage.title}</strong>
               <small>{activeImage.detail}</small>
@@ -232,6 +294,19 @@ export default function Page() {
             <ChevronRight size={22} />
           </button>
         </div>
+      )}
+
+      {showLogin && (
+        <AdminLogin
+          onClose={() => setShowLogin(false)}
+          onSuccess={() => { setIsAdmin(true); setShowLogin(false) }}
+        />
+      )}
+      {showUpload && isAdmin && (
+        <AdminUpload
+          onClose={() => setShowUpload(false)}
+          onAdd={handleAddPhoto}
+        />
       )}
     </main>
   )
