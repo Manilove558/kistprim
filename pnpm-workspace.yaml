@@ -3,3 +3,4 @@ pmOnFail: ignore
 minimumReleaseAgeExclude:
   - '@next/*'
   - next
+  - '@netlify/blobs@11.1.1'

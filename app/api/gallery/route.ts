@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getStore } from '@netlify/blobs'
 import type { GalleryImage } from '@/lib/gallery-data'
 
+// Ye route hamesha dynamic rahe — static prerender mat karo
+export const dynamic = 'force-dynamic'
+
 // Shared gallery storage — Netlify Blobs par taaki sab devices par same dikhe
 // localStorage sirf fallback hai (jab Blobs available nahi)
 
