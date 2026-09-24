@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Moon, Sun, X, Plus, LogOut, Trash2, ShieldCheck, Pencil } from 'lucide-react'
 import { images as initialImages, type GalleryImage, type GalleryEdits } from '@/lib/gallery-data'
 import AdminLogin from '@/components/admin/AdminLogin'
@@ -115,6 +115,22 @@ export default function Page() {
 
   const activeImage = activeIndex === null ? null : galleryImages[activeIndex]
 
+  // Lightbox caption scroll — text upar jaye to image par fade ho
+  const captionTextRef = useRef<HTMLElement | null>(null)
+  const [captionFaded, setCaptionFaded] = useState(false)
+
+  // Dusri photo khulne par caption scroll reset karo
+  useEffect(() => {
+    setCaptionFaded(false)
+    if (captionTextRef.current) captionTextRef.current.scrollTop = 0
+  }, [activeIndex])
+
+  const handleCaptionScroll = () => {
+    const el = captionTextRef.current
+    if (!el) return
+    setCaptionFaded(el.scrollTop > 24)
+  }
+
   useEffect(() => {
     if (activeIndex === null) return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -198,9 +214,11 @@ export default function Page() {
 
     // UI se turant hatao
     const newCustom = galleryMeta.custom.filter((c) => c.src !== target.src)
-    const newDeleted = target.src.startsWith('data:')
-      ? galleryMeta.deleted
-      : [...galleryMeta.deleted, target.src]
+    // Sirf purani bundled photos (/photos/...) deleted list me jati hain;
+    // uploaded photos (data: ya /api/photo/) server se hi delete hoti hain
+    const newDeleted = target.src.startsWith('/photos/')
+      ? [...galleryMeta.deleted, target.src]
+      : galleryMeta.deleted
     const newMeta = { ...galleryMeta, custom: newCustom, deleted: newDeleted }
     setGalleryMeta(newMeta)
     setGalleryImages(buildGallery(newCustom, newDeleted, newMeta.edits))
@@ -393,9 +411,19 @@ export default function Page() {
           <div className="lightbox-content" onClick={(event) => event.stopPropagation()}>
             <img className="lightbox-image" src={activeImage.src} alt={activeImage.alt} />
             <div className="lightbox-caption">
-              <span>{String(activeIndex + 1).padStart(2, '0')} / {String(galleryImages.length).padStart(2, '0')}</span>
-              <strong>{activeImage.title}</strong>
-              <small>{activeImage.detail}</small>
+              <div className="lightbox-caption-head">
+                <span className="lightbox-count">{String(activeIndex + 1).padStart(2, '0')} / {String(galleryImages.length).padStart(2, '0')}</span>
+                <strong>{activeImage.title}</strong>
+              </div>
+              {activeImage.detail && (
+                <small
+                  ref={captionTextRef}
+                  onScroll={handleCaptionScroll}
+                  className={`lightbox-caption-text${captionFaded ? ' is-faded' : ''}`}
+                >
+                  {activeImage.detail}
+                </small>
+              )}
             </div>
           </div>
           <button

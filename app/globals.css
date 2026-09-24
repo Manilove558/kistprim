@@ -399,45 +399,68 @@ img { max-width: 100%; }
 }
 @keyframes lightbox-in { from { opacity: 0; } to { opacity: 1; } }
 .lightbox-content {
+  /* FIXED size — caption chahe kitna bhi lamba ho, image apni jagah se NAHI hilegi */
+  position: relative;
   width: min(70vw, 860px); /* lightbox ke andar photo kitni chaudi dikhegi */
-  max-height: 100%;        /* caption lamba ho to bhi screen se bahar na jaye */
-  display: flex;
-  flex-direction: column;
+  height: min(80vh, 780px);
   margin: auto;            /* chhota content ho to center me rahe */
+  flex-shrink: 0;
 }
 .lightbox-image {
   display: block;
   width: 100%;
-  height: min(70vh, 700px);   /* lightbox photo ki max height */
+  height: 100%;
   object-fit: contain;        /* poori photo dikhti hai, crop nahi hoti (grid wale cards se alag) */
   border-radius: 16px;
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.25); /* photo ke aas-paas khali jagah halki dark */
 }
 .lightbox-caption {
-  /* Photo ke neeche "01 / 06", title, detail text */
+  /* Image ke NEECHE overlay — text image ke upar aata hai, image apni jagah rehti hai */
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  max-height: 78%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 64px 22px 22px;   /* upar zyada padding taaki gradient me text saaf dikhe */
+  background: linear-gradient(to top, rgba(0,0,0,0.92) 58%, rgba(0,0,0,0.45) 82%, transparent 100%);
+  border-radius: 0 0 16px 16px;
+  color: #f5f5f7;
+}
+.lightbox-caption-head {
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;              /* lamba text agli line me aye, bahar na jaye */
-  gap: 6px 14px;
-  color: #f5f5f7;
-  padding-top: 18px;
-  flex-shrink: 0;
-  max-height: 32vh;             /* caption isse lamba ho to andar hi scroll hoga */
-  overflow-y: auto;
+  gap: 12px;
 }
-.lightbox-caption span {
+.lightbox-count {
   color: rgba(245, 245, 247, 0.55);
   font-size: 12px;
   letter-spacing: 0.02em;
+  flex-shrink: 0;
 }
-.lightbox-caption small {
-  color: rgba(245, 245, 247, 0.65);
-  font-size: 13px;
-  flex-basis: 100%;             /* detail text hamesha apni line me aye */
-  /* Bahut lamba detail max 8 lines tak, baaki caption ke andar scroll */
-  display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden;
+.lightbox-caption strong {
+  font-size: 19px; font-weight: 590;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.lightbox-caption strong { font-size: 19px; font-weight: 590; }
+.lightbox-caption-text {
+  /* Lamba detail yahin scroll hota hai — image apni jagah rehti hai */
+  margin: 0;
+  padding-right: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: 24vh;
+  color: rgba(245, 245, 247, 0.78);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.lightbox-caption-text::-webkit-scrollbar { width: 4px; }
+.lightbox-caption-text::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.35); border-radius: 4px; }
+.lightbox-caption-text.is-faded {
+  /* Scroll karne par upar jata text image par fade hota jaye */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 64px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 64px);
+}
 .close-lightbox, .lightbox-arrow {
   /* Close (X) button aur left/right arrow buttons ka common style */
   position: absolute;
@@ -478,10 +501,10 @@ img { max-width: 100%; }
   .card-caption strong { font-size: 14px; }
   .card-caption small { font-size: 11px; }
   .lightbox { padding: max(64px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom)); }
-  .lightbox-content { width: 100%; }
-  .lightbox-image { height: min(58vh, 560px); }
-  .lightbox-caption { flex-wrap: wrap; gap: 6px 12px; }
-  .lightbox-caption strong { width: 100%; order: 2; font-size: 17px; }
+  .lightbox-content { width: 100%; height: 74vh; }
+  .lightbox-caption { padding: 48px 16px 16px; }
+  .lightbox-caption strong { font-size: 17px; }
+  .lightbox-caption-text { max-height: 20vh; }
   .previous { left: 10px; }
   .next { right: 10px; }
   .lightbox-arrow { width: 38px; height: 38px; }

@@ -48,9 +48,26 @@ export async function POST(req: NextRequest) {
     const edits = ((await store.get('edits.json', { type: 'json' }).catch(() => null)) as GalleryEdits | null) || {}
 
     if (action === 'add' && image) {
+      let finalImage = image
+      // Base64 photo ko alag blob file me save karo — taaki browser use lazy-load
+      // kar sake (poori gallery JSON me ghusa hone se page slow hota hai)
+      if (image.src.startsWith('data:')) {
+        const match = image.src.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.*)$/)
+        if (match) {
+          const mimeType = match[1]
+          const base64 = match[2]
+          const ext = mimeType.split('/')[1].replace('jpeg', 'jpg').split('+')[0] || 'jpg'
+          const uniqueId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+          const blobKey = `photos/${uniqueId}.${ext}`
+          const buffer = Buffer.from(base64, 'base64')
+          await store.set(blobKey, buffer, { contentType: mimeType })
+          // JSON me sirf photo ka link rakho, poori photo nahi
+          finalImage = { ...image, src: `/api/photo/${blobKey}` }
+        }
+      }
       // Duplicate se bachao
-      if (!custom.some((c) => c.src === image.src)) {
-        custom.unshift(image)
+      if (!custom.some((c) => c.src === finalImage.src)) {
+        custom.unshift(finalImage)
         await store.setJSON('custom.json', custom)
       }
     } else if (action === 'delete' && src) {
@@ -60,8 +77,15 @@ export async function POST(req: NextRequest) {
       if (custom.length !== beforeLen) {
         await store.setJSON('custom.json', custom)
       }
-      // Initial photo hai (data: nahi) to deleted list me dalo taaki wapas na aye
-      if (!src.startsWith('data:')) {
+      // Agar ye uploaded blob photo hai to uski file bhi delete karo (storage saaf rahe)
+      if (src.startsWith('/api/photo/')) {
+        const blobKey = decodeURIComponent(src.slice('/api/photo/'.length))
+        if (blobKey.startsWith('photos/')) {
+          await store.delete(blobKey).catch(() => {})
+        }
+      }
+      // Purani bundled photo hai (/photos/...) to deleted list me dalo taaki wapas na aye
+      if (src.startsWith('/photos/')) {
         if (!deleted.includes(src)) {
           deleted.push(src)
           await store.setJSON('deleted.json', deleted)
