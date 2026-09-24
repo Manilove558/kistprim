@@ -17,27 +17,42 @@ type Copy = {
 }
 
 const GALLERY_STORE_KEY = 'kist_custom_gallery'
+const DELETED_STORE_KEY = 'kist_deleted_gallery'
 
-function loadGallery(): GalleryImage[] {
+// Server (Netlify Blobs) se gallery lao — sab devices par same dikhega
+// Agar server fail ho to localStorage fallback
+async function loadGalleryFromServer(): Promise<{ custom: GalleryImage[]; deleted: string[]; useFallback: boolean }> {
   try {
-    const raw = localStorage.getItem(GALLERY_STORE_KEY)
-    if (raw) {
-      const custom = JSON.parse(raw) as GalleryImage[]
-      // custom photos sabse upar (nayi post pehle dikhe)
-      return [...custom, ...initialImages.slice(1)]
+    const res = await fetch('/api/gallery', { cache: 'no-store' })
+    if (!res.ok) throw new Error('api fail')
+    const data = await res.json()
+    if (data.fallback) throw new Error('fallback')
+    return { custom: data.custom || [], deleted: data.deleted || [], useFallback: false }
+  } catch {
+    // Fallback: localStorage
+    try {
+      const raw = localStorage.getItem(GALLERY_STORE_KEY)
+      const custom = raw ? (JSON.parse(raw) as GalleryImage[]) : []
+      const delRaw = localStorage.getItem(DELETED_STORE_KEY)
+      const deleted = delRaw ? (JSON.parse(delRaw) as string[]) : []
+      return { custom, deleted, useFallback: true }
+    } catch {
+      return { custom: [], deleted: [], useFallback: true }
     }
-  } catch {}
-  return initialImages.slice(1)
+  }
 }
 
-function saveCustomGallery(all: GalleryImage[]) {
+function buildGallery(custom: GalleryImage[], deleted: string[]): GalleryImage[] {
+  const deletedSet = new Set(deleted)
+  const initial = initialImages.slice(1).filter((img) => !deletedSet.has(img.src))
+  return [...custom, ...initial]
+}
+
+function saveLocalFallback(custom: GalleryImage[], deleted: string[]) {
   try {
-    // sirf admin dwara add ki gayi photos save karo (initial wali nahi)
-    const initialSrcs = new Set(initialImages.map(i => i.src))
-    const custom = all.filter(i => !initialSrcs.has(i.src) || i.src.startsWith('data:'))
-    // data: wali sab custom hain; initial src wali ko hatao agar woh custom nahi
-    const onlyCustom = all.filter(img => img.src.startsWith('data:'))
+    const onlyCustom = custom.filter((img) => img.src.startsWith('data:'))
     localStorage.setItem(GALLERY_STORE_KEY, JSON.stringify(onlyCustom))
+    localStorage.setItem(DELETED_STORE_KEY, JSON.stringify(deleted))
   } catch {}
 }
 
@@ -52,12 +67,21 @@ export default function Page() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [showLogin, setShowLogin] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
+  const [galleryMeta, setGalleryMeta] = useState<{ custom: GalleryImage[]; deleted: string[]; useFallback: boolean }>({
+    custom: [],
+    deleted: [],
+    useFallback: true,
+  })
 
   useEffect(() => {
     const current = document.documentElement.getAttribute('data-theme')
     if (current === 'light' || current === 'dark') setTheme(current)
     setIsAdmin(isAdminLoggedIn())
-    setGalleryImages(loadGallery())
+    // Server se gallery load karo
+    loadGalleryFromServer().then(({ custom, deleted, useFallback }) => {
+      setGalleryMeta({ custom, deleted, useFallback })
+      setGalleryImages(buildGallery(custom, deleted))
+    })
   }, [])
 
   const toggleTheme = () => {
@@ -103,19 +127,61 @@ export default function Page() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  const handleAddPhoto = (img: GalleryImage) => {
-    const updated = [img, ...galleryImages]
-    setGalleryImages(updated)
-    saveCustomGallery(updated)
+  const handleAddPhoto = async (img: GalleryImage) => {
+    // Pehle UI me turant dikhao
+    const newCustom = [img, ...galleryMeta.custom]
+    const newMeta = { ...galleryMeta, custom: newCustom }
+    setGalleryMeta(newMeta)
+    setGalleryImages(buildGallery(newCustom, newMeta.deleted))
+    if (newMeta.useFallback) saveLocalFallback(newCustom, newMeta.deleted)
+
+    // Phir server par save karo taaki sab devices par dikhe
+    try {
+      const res = await fetch('/api/gallery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', image: img }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const serverMeta = { custom: data.custom || newCustom, deleted: data.deleted || newMeta.deleted, useFallback: false }
+        setGalleryMeta(serverMeta)
+        setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted))
+      }
+    } catch {}
   }
 
-  const handleDelete = (index: number, e: React.MouseEvent) => {
+  const handleDelete = async (index: number, e: React.MouseEvent) => {
     e.stopPropagation()
     if (!confirm('Ye photo delete karein?')) return
-    const updated = galleryImages.filter((_, i) => i !== index)
-    setGalleryImages(updated)
-    saveCustomGallery(updated)
+    const target = galleryImages[index]
+    if (!target) return
+
+    // UI se turant hatao
+    const newCustom = galleryMeta.custom.filter((c) => c.src !== target.src)
+    const newDeleted = target.src.startsWith('data:')
+      ? galleryMeta.deleted
+      : [...galleryMeta.deleted, target.src]
+    const newMeta = { ...galleryMeta, custom: newCustom, deleted: newDeleted }
+    setGalleryMeta(newMeta)
+    setGalleryImages(buildGallery(newCustom, newDeleted))
+    if (newMeta.useFallback) saveLocalFallback(newCustom, newDeleted)
     if (activeIndex !== null) setActiveIndex(null)
+
+    // Server par bhi delete karo
+    try {
+      const res = await fetch('/api/gallery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', src: target.src }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const serverMeta = { custom: data.custom || newCustom, deleted: data.deleted || newDeleted, useFallback: false }
+        setGalleryMeta(serverMeta)
+        setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted))
+      }
+    } catch {}
   }
 
   const handleLogout = () => {

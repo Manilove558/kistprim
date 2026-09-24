@@ -1,0 +1,229 @@
+[1mdiff --git a/.env.example b/.env.example[m
+[1mnew file mode 100644[m
+[1mindex 00000000..58f2a20d[m
+[1m--- /dev/null[m
+[1m+++ b/.env.example[m
+[36m@@ -0,0 +1,6 @@[m
+[32m+[m[32m# Resend se asli email bhejne ke liye (https://resend.com se free API key lein)[m
+[32m+[m[32mRESEND_API_KEY=re_xxxxxxxxxxxxxxxx[m
+[32m+[m[32m# Kis naam se mail jayega[m
+[32m+[m[32mRESEND_FROM_EMAIL=onboarding@resend.dev[m
+[32m+[m
+[32m+[m[32m# Bina key ke dev mode me OTP screen par hi dikhega[m
+[1mdiff --git a/components/admin/AdminLogin.tsx b/components/admin/AdminLogin.tsx[m
+[1mnew file mode 100644[m
+[1mindex 00000000..85477bd3[m
+[1m--- /dev/null[m
+[1m+++ b/components/admin/AdminLogin.tsx[m
+[36m@@ -0,0 +1,135 @@[m
+[32m+[m[32m'use client'[m
+[32m+[m
+[32m+[m[32mimport { useState } from 'react'[m
+[32m+[m[32mimport { X, Mail, ShieldCheck, Loader2 } from 'lucide-react'[m
+[32m+[m[32mimport {[m
+[32m+[m[32m  ADMIN_EMAIL,[m
+[32m+[m[32m  generateOtp,[m
+[32m+[m[32m  saveOtp,[m
+[32m+[m[32m  verifyOtp,[m
+[32m+[m[32m  setAdminSession,[m
+[32m+[m[32m  isValidAdminEmail,[m
+[32m+[m[32m} from '@/lib/admin-auth'[m
+[32m+[m
+[32m+[m[32mtype Props = {[m
+[32m+[m[32m  onClose: () => void[m
+[32m+[m[32m  onSuccess: () => void[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport default function AdminLogin({ onClose, onSuccess }: Props) {[m
+[32m+[m[32m  const [step, setStep] = useState<1 | 2>(1)[m
+[32m+[m[32m  const [email, setEmail] = useState('')[m
+[32m+[m[32m  const [otp, setOtp] = useState('')[m
+[32m+[m[32m  const [loading, setLoading] = useState(false)[m
+[32m+[m[32m  const [error, setError] = useState('')[m
+[32m+[m[32m  const [info, setInfo] = useState('')[m
+[32m+[m[32m  const [devOtp, setDevOtp] = useState('')[m
+[32m+[m
+[32m+[m[32m  const sendOtp = async () => {[m
+[32m+[m[32m    setError('')[m
+[32m+[m[32m    setInfo('')[m
+[32m+[m[32m    if (!isValidAdminEmail(email)) {[m
+[32m+[m[32m      setError(`Sirf admin email (${ADMIN_EMAIL}) se login ho sakta hai.`)[m
+[32m+[m[32m      return[m
+[32m+[m[32m    }[m
+[32m+[m[32m    setLoading(true)[m
+[32m+[m[32m    try {[m
+[32m+[m[32m      const newOtp = generateOtp()[m
+[32m+[m[32m      const res = await fetch('/api/send-otp', {[m
+[32m+[m[32m        method: 'POST',[m
+[32m+[m[32m        headers: { 'Content-Type': 'application/json' },[m
+[32m+[m[32m        body: JSON.stringify({ email: email.trim().toLowerCase(), otp: newOtp }),[m
+[32m+[m[32m      })[m
+[32m+[m[32m      const data = await res.json()[m
+[32m+[m[32m      if (!res.ok) {[m
+[32m+[m[32m        setError(data.error || 'OTP bhejne me problem hui')[m
+[32m+[m[32m        return[m
+[32m+[m[32m      }[m
+[32m+[m[32m      saveOtp(newOtp)[m
+[32m+[m[32m      setStep(2)[m
+[32m+[m[32m      if (data.sent) {[m
+[32m+[m[32m        setInfo(`${ADMIN_EMAIL} par OTP bhej diya gaya hai. 5 minute me daalein.`)[m
+[32m+[m[32m      } else {[m
+[32m+[m[32m        // Dev mode — jab tak email service configure nahi hai[m
+[32m+[m[32m        setDevOtp(data.devPreviewOtp || newOtp)[m
+[32m+[m[32m        setInfo('Email service abhi configure nahi hai, isliye OTP yahin dikh raha hai (testing ke liye).')[m
+[32m+[m[32m      }[m
+[32m+[m[32m    } catch {[m
+[32m+[m[32m      setError('Network error — phir try karein')[m
+[32m+[m[32m    } finally {[m
+[32m+[m[32m      setLoading(false)[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  const doVerify = () => {[m
+[32m+[m[32m    setError('')[m
+[32m+[m[32m    if (otp.trim().length !== 6) {[m
+[32m+[m[32m      setError('6-digit OTP daalein')[m
+[32m+[m[32m      return[m
+[32m+[m[32m    }[m
+[32m+[m[32m    if (verifyOtp(otp)) {[m
+[32m+[m[32m      setAdminSession()[m
+[32m+[m[32m      onSuccess()[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m      setError('Galat ya expire OTP. Dobara bhejein.')[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <div className="admin-overlay" onClick={onClose}>[m
+[32m+[m[32m      <div className="admin-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Admin login">[m
+[32m+[m[32m        <button className="admin-close" onClick={onClose} aria-label="Band karein"><X size={18} /></button>[m
+[32m+[m
+[32m+[m[32m        <div className="admin-head">[m
+[32m+[m[32m          <span className="admin-icon"><ShieldCheck size={22} /></span>[m
+[32m+[m[32m          <h3>Admin Login</h3>[m
+[32m+[m[32m          <p>Sirf admin hi photos post kar sakta hai.</p>[m
+[32m+[m[32m        </div>[m
+[32m+[m
+[32m+[m[32m        {step === 1 ? ([m
+[32m+[m[32m          <div className="admin-body">[m
+[32m+[m[32m            <label className="admin-label">Admin Email</label>[m
+[32m+[m[32m            <div className="admin-input-wrap">[m
+[32m+[m[32m              <Mail size={16} />[m
+[32m+[m[32m              <input[m
+[32m+[m[32m                type="email"[m
+[32m+[m[32m                placeholder={ADMIN_EMAIL}[m
+[32m+[m[32m                value={email}[m
+[32m+[m[32m                onChange={(e) => setEmail(e.target.value)}[m
+[32m+[m[32m                className="admin-input"[m
+[32m+[m[32m              />[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m            {error && <p className="admin-error">{error}</p>}[m
+[32m+[m[32m            {info && <p className="admin-info">{info}</p>}[m
+[32m+[m[32m            <button className="admin-btn" onClick={sendOtp} disabled={loading}>[m
+[32m+[m[32m              {loading ? <><Loader2 size={16} className="spin" /> OTP bhej rahe hain…</> : 'OTP bhejein'}[m
+[32m+[m[32m            </button>[m
+[32m+[m[32m            <p className="admin-hint">OTP <b>{ADMIN_EMAIL}</b> par jayega.</p>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        ) : ([m
+[32m+[m[32m          <div className="admin-body">[m
+[32m+[m[32m            <label className="admin-label">6-digit OTP</label>[m
+[32m+[m[32m            <input[m
+[32m+[m[32m              type="text"[m
+[32m+[m[32m              inputMode="numeric"[m
+[32m+[m[32m              maxLength={6}[m
+[32m+[m[32m              placeholder="••••••"[m
+[32m+[m[32m              value={otp}[m
+[32m+[m[32m              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}[m
+[32m+[m[32m              className="admin-input admin-otp"[m
+[32m+[m[32m            />[m
+[32m+[m[32m            {devOtp && ([m
+[32m+[m[32m              <p className="admin-dev">Dev OTP: <b>{devOtp}</b></p>[m
+[32m+[m[32m            )}[m
+[32m+[m[32m            {error && <p className="admin-error">{error}</p>}[m
+[32m+[m[32m            {info && <p className="admin-info">{info}</p>}[m
+[32m+[m[32m            <button className="admin-btn" onClick={doVerify}>Verify & Login</button>[m
+[32m+[m[32m            <button className="admin-link" onClick={() => { setStep(1); setError(''); setInfo('') }}>[m
+[32m+[m[32m              Email badlein / OTP dobara bhejein[m
+[32m+[m[32m            </button>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        )}[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    </div>[m
+[32m+[m[32m  )[m
+[32m+[m[32m}[m
+[1mdiff --git a/lib/admin-auth.ts b/lib/admin-auth.ts[m
+[1mnew file mode 100644[m
+[1mindex 00000000..bf78aaa1[m
+[1m--- /dev/null[m
+[1m+++ b/lib/admin-auth.ts[m
+[36m@@ -0,0 +1,70 @@[m
+[32m+[m[32m// Admin auth constants aur helpers[m
+[32m+[m[32m// Sirf yahi email admin hai — user ki requirement ke hisab se[m
+[32m+[m[32mexport const ADMIN_EMAIL = 'backc6915@gmail.com'[m
+[32m+[m
+[32m+[m[32mconst SESSION_KEY = 'kist_admin_session'[m
+[32m+[m[32mconst OTP_KEY = 'kist_admin_otp'[m
+[32m+[m[32mconst OTP_EXPIRY_MS = 5 * 60 * 1000 // 5 minute[m
+[32m+[m
+[32m+[m[32mexport function generateOtp(): string {[m
+[32m+[m[32m  return Math.floor(100000 + Math.random() * 900000).toString()[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function saveOtp(otp: string) {[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    localStorage.setItem(OTP_KEY, JSON.stringify({ otp, expires: Date.now() + OTP_EXPIRY_MS }))[m
+[32m+[m[32m  } catch {}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function getStoredOtp(): { otp: string; expires: number } | null {[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    const raw = localStorage.getItem(OTP_KEY)[m
+[32m+[m[32m    if (!raw) return null[m
+[32m+[m[32m    return JSON.parse(raw)[m
+[32m+[m[32m  } catch {[m
+[32m+[m[32m    return null[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function clearOtp() {[m
+[32m+[m[32m  try { localStorage.removeItem(OTP_KEY) } catch {}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function verifyOtp(input: string): boolean {[m
+[32m+[m[32m  const stored = getStoredOtp()[m
+[32m+[m[32m  if (!stored) return false[m
+[32m+[m[32m  if (Date.now() > stored.expires) {[m
+[32m+[m[32m    clearOtp()[m
+[32m+[m[32m    return false[m
+[32m+[m[32m  }[m
+[32m+[m[32m  return stored.otp === input.trim()[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function setAdminSession() {[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    localStorage.setItem(SESSION_KEY, JSON.stringify({ email: ADMIN_EMAIL, loginAt: Date.now() }))[m
+[32m+[m[32m    localStorage.setItem('kist_is_admin', '1')[m
+[32m+[m[32m  } catch {}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function clearAdminSession() {[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    localStorage.removeItem(SESSION_KEY)[m
+[32m+[m[32m    localStorage.removeItem('kist_is_admin')[m
+[32m+[m[32m  } catch {}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function isAdminLoggedIn(): boolean {[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    const s = localStorage.getItem(SESSION_KEY)[m
+[32m+[m[32m    if (!s) return false[m
+[32m+[m[32m    const data = JSON.parse(s)[m
+[32m+[m[32m    return data.email === ADMIN_EMAIL[m
+[32m+[m[32m  } catch {[m
+[32m+[m[32m    return false[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport function isValidAdminEmail(email: string): boolean {[m
+[32m+[m[32m  return email.trim().toLowerCase() === ADMIN_EMAIL[m
+[32m+[m[32m}[m
