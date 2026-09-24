@@ -15,6 +15,12 @@ export interface GalleryImage {
   height: number
 }
 
+/**
+ * Admin ke caption edits — photo ke src se uska naya title/detail ka map.
+ * Netlify Blobs (edits.json) me save hota hai taaki sab devices par same dikhe.
+ */
+export type GalleryEdits = Record<string, { title: string; detail: string }>
+
 export const images: GalleryImage[] = [
   {
     title: 'Two of us',

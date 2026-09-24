@@ -4,11 +4,11 @@
 `.env.local` sirf tumhare laptop par kaam karta hai. Netlify par alag se lagana padta hai:
 - Netlify dashboard → tumhari site → **Site settings → Environment variables**
 - Add: `RESEND_API_KEY` = tumhari `re_` wali key (nayi wali, purani delete kar di thi)
-- Add: `RESEND_FROM_EMAIL` = `onboarding@resend.dev`
+- Add: `RESEND_FROM_EMAIL` = Resend ka test sender email
 - Uske baad **Deploys → Trigger deploy → Deploy site** (env var ke baad redeploy zaroori hai)
 
 ## 2. Resend account kis email se bana hai?
-`onboarding@resend.dev` se mail **sirf usi email par jata hai** jis se Resend account banaya hai.
+Resend ke test sender se mail **sirf usi email par jata hai** jis se Resend account banaya hai.
 - Agar Resend account `backc6915@gmail.com` se bana hai → OTP ayega ✅
 - Agar kisi aur email se bana hai → OTP nahi ayega ❌
 - Solution: ya to `backc6915@gmail.com` se naya Resend account banao, ya Resend me **Domains** me apna domain verify karo

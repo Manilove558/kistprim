@@ -25,7 +25,7 @@ Asli me `backc6915@gmail.com` par OTP bhejne ke liye:
 2. API Keys me nayi key banao
 3. Netlify / Vercel me Environment Variables me add karo:
    - `RESEND_API_KEY` = tumhari key
-   - `RESEND_FROM_EMAIL` = `onboarding@resend.dev` (ya apna verified domain)
+   - `RESEND_FROM_EMAIL` = Resend ka test sender email (ya apna verified domain)
 4. Deploy dobara karo — ab OTP sach me mail par jayega
 
 ### Option B: Bina service (testing)

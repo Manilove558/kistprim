@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, Moon, Sun, X, Plus, LogOut, Trash2, ShieldCheck } from 'lucide-react'
-import { images as initialImages, type GalleryImage } from '@/lib/gallery-data'
+import { ChevronLeft, ChevronRight, Moon, Sun, X, Plus, LogOut, Trash2, ShieldCheck, Pencil } from 'lucide-react'
+import { images as initialImages, type GalleryImage, type GalleryEdits } from '@/lib/gallery-data'
 import AdminLogin from '@/components/admin/AdminLogin'
 import AdminUpload from '@/components/admin/AdminUpload'
+import AdminEdit from '@/components/admin/AdminEdit'
 import { isAdminLoggedIn, clearAdminSession } from '@/lib/admin-auth'
 
 type Copy = {
@@ -18,16 +19,17 @@ type Copy = {
 
 const GALLERY_STORE_KEY = 'kist_custom_gallery'
 const DELETED_STORE_KEY = 'kist_deleted_gallery'
+const EDITS_STORE_KEY = 'kist_edits_gallery'
 
 // Server (Netlify Blobs) se gallery lao — sab devices par same dikhega
 // Agar server fail ho to localStorage fallback
-async function loadGalleryFromServer(): Promise<{ custom: GalleryImage[]; deleted: string[]; useFallback: boolean }> {
+async function loadGalleryFromServer(): Promise<{ custom: GalleryImage[]; deleted: string[]; edits: GalleryEdits; useFallback: boolean }> {
   try {
     const res = await fetch('/api/gallery', { cache: 'no-store' })
     if (!res.ok) throw new Error('api fail')
     const data = await res.json()
     if (data.fallback) throw new Error('fallback')
-    return { custom: data.custom || [], deleted: data.deleted || [], useFallback: false }
+    return { custom: data.custom || [], deleted: data.deleted || [], edits: data.edits || {}, useFallback: false }
   } catch {
     // Fallback: localStorage
     try {
@@ -35,24 +37,33 @@ async function loadGalleryFromServer(): Promise<{ custom: GalleryImage[]; delete
       const custom = raw ? (JSON.parse(raw) as GalleryImage[]) : []
       const delRaw = localStorage.getItem(DELETED_STORE_KEY)
       const deleted = delRaw ? (JSON.parse(delRaw) as string[]) : []
-      return { custom, deleted, useFallback: true }
+      const editsRaw = localStorage.getItem(EDITS_STORE_KEY)
+      const edits = editsRaw ? (JSON.parse(editsRaw) as GalleryEdits) : {}
+      return { custom, deleted, edits, useFallback: true }
     } catch {
-      return { custom: [], deleted: [], useFallback: true }
+      return { custom: [], deleted: [], edits: {}, useFallback: true }
     }
   }
 }
 
-function buildGallery(custom: GalleryImage[], deleted: string[]): GalleryImage[] {
+function buildGallery(custom: GalleryImage[], deleted: string[], edits: GalleryEdits): GalleryImage[] {
   const deletedSet = new Set(deleted)
-  const initial = initialImages.slice(1).filter((img) => !deletedSet.has(img.src))
-  return [...custom, ...initial]
+  // Admin ke caption edits lagao (custom + purani photos dono par)
+  const applyEdits = (img: GalleryImage): GalleryImage => {
+    const e = edits[img.src]
+    if (!e) return img
+    return { ...img, title: e.title, detail: e.detail, alt: e.title }
+  }
+  const initial = initialImages.slice(1).filter((img) => !deletedSet.has(img.src)).map(applyEdits)
+  return [...custom.map(applyEdits), ...initial]
 }
 
-function saveLocalFallback(custom: GalleryImage[], deleted: string[]) {
+function saveLocalFallback(custom: GalleryImage[], deleted: string[], edits: GalleryEdits) {
   try {
     const onlyCustom = custom.filter((img) => img.src.startsWith('data:'))
     localStorage.setItem(GALLERY_STORE_KEY, JSON.stringify(onlyCustom))
     localStorage.setItem(DELETED_STORE_KEY, JSON.stringify(deleted))
+    localStorage.setItem(EDITS_STORE_KEY, JSON.stringify(edits))
   } catch {}
 }
 
@@ -67,9 +78,11 @@ export default function Page() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [showLogin, setShowLogin] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
-  const [galleryMeta, setGalleryMeta] = useState<{ custom: GalleryImage[]; deleted: string[]; useFallback: boolean }>({
+  const [editTarget, setEditTarget] = useState<{ index: number; image: GalleryImage } | null>(null)
+  const [galleryMeta, setGalleryMeta] = useState<{ custom: GalleryImage[]; deleted: string[]; edits: GalleryEdits; useFallback: boolean }>({
     custom: [],
     deleted: [],
+    edits: {},
     useFallback: true,
   })
 
@@ -78,9 +91,9 @@ export default function Page() {
     if (current === 'light' || current === 'dark') setTheme(current)
     setIsAdmin(isAdminLoggedIn())
     // Server se gallery load karo
-    loadGalleryFromServer().then(({ custom, deleted, useFallback }) => {
-      setGalleryMeta({ custom, deleted, useFallback })
-      setGalleryImages(buildGallery(custom, deleted))
+    loadGalleryFromServer().then(({ custom, deleted, edits, useFallback }) => {
+      setGalleryMeta({ custom, deleted, edits, useFallback })
+      setGalleryImages(buildGallery(custom, deleted, edits))
     })
   }, [])
 
@@ -132,8 +145,8 @@ export default function Page() {
     const newCustom = [img, ...galleryMeta.custom]
     const newMeta = { ...galleryMeta, custom: newCustom }
     setGalleryMeta(newMeta)
-    setGalleryImages(buildGallery(newCustom, newMeta.deleted))
-    if (newMeta.useFallback) saveLocalFallback(newCustom, newMeta.deleted)
+    setGalleryImages(buildGallery(newCustom, newMeta.deleted, newMeta.edits))
+    if (newMeta.useFallback) saveLocalFallback(newCustom, newMeta.deleted, newMeta.edits)
 
     // Phir server par save karo taaki sab devices par dikhe
     try {
@@ -144,9 +157,35 @@ export default function Page() {
       })
       if (res.ok) {
         const data = await res.json()
-        const serverMeta = { custom: data.custom || newCustom, deleted: data.deleted || newMeta.deleted, useFallback: false }
+        const serverMeta = { custom: data.custom || newCustom, deleted: data.deleted || newMeta.deleted, edits: data.edits || newMeta.edits, useFallback: false }
         setGalleryMeta(serverMeta)
-        setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted))
+        setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted, serverMeta.edits))
+      }
+    } catch {}
+  }
+
+  // Admin ne caption edit kiya — pehle UI me, phir server par save karo
+  const handleEditSave = async (title: string, detail: string) => {
+    if (!editTarget) return
+    const src = editTarget.image.src
+    const newEdits = { ...galleryMeta.edits, [src]: { title, detail } }
+    const newMeta = { ...galleryMeta, edits: newEdits }
+    setGalleryMeta(newMeta)
+    setGalleryImages(buildGallery(newMeta.custom, newMeta.deleted, newEdits))
+    if (newMeta.useFallback) saveLocalFallback(newMeta.custom, newMeta.deleted, newEdits)
+    setEditTarget(null)
+
+    try {
+      const res = await fetch('/api/gallery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'edit', src, title, detail }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const serverMeta = { custom: data.custom || newMeta.custom, deleted: data.deleted || newMeta.deleted, edits: data.edits || newEdits, useFallback: false }
+        setGalleryMeta(serverMeta)
+        setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted, serverMeta.edits))
       }
     } catch {}
   }
@@ -164,8 +203,8 @@ export default function Page() {
       : [...galleryMeta.deleted, target.src]
     const newMeta = { ...galleryMeta, custom: newCustom, deleted: newDeleted }
     setGalleryMeta(newMeta)
-    setGalleryImages(buildGallery(newCustom, newDeleted))
-    if (newMeta.useFallback) saveLocalFallback(newCustom, newDeleted)
+    setGalleryImages(buildGallery(newCustom, newDeleted, newMeta.edits))
+    if (newMeta.useFallback) saveLocalFallback(newCustom, newDeleted, newMeta.edits)
     if (activeIndex !== null) setActiveIndex(null)
 
     // Server par bhi delete karo
@@ -177,9 +216,9 @@ export default function Page() {
       })
       if (res.ok) {
         const data = await res.json()
-        const serverMeta = { custom: data.custom || newCustom, deleted: data.deleted || newDeleted, useFallback: false }
+        const serverMeta = { custom: data.custom || newCustom, deleted: data.deleted || newDeleted, edits: data.edits || newMeta.edits, useFallback: false }
         setGalleryMeta(serverMeta)
-        setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted))
+        setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted, serverMeta.edits))
       }
     } catch {}
   }
@@ -267,7 +306,7 @@ export default function Page() {
           <div className="gallery-section-head">
             <h2>The gallery</h2>
             <p>Every frame from the night, in order.</p>
-            {isAdmin && <p className="admin-note">Admin mode: photos par delete button dikhega.</p>}
+            {isAdmin && <p className="admin-note">Admin mode: photos par edit/delete button dikhega.</p>}
           </div>
 
           <div className="gallery-grid" aria-label="Photo gallery">
@@ -293,14 +332,24 @@ export default function Page() {
                   </span>
                 </button>
                 {isAdmin && (
-                  <button
-                    className="delete-btn"
-                    onClick={(e) => handleDelete(index, e)}
-                    aria-label="Delete photo"
-                    title="Delete"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <>
+                    <button
+                      className="edit-btn"
+                      onClick={(e) => { e.stopPropagation(); setEditTarget({ index, image }) }}
+                      aria-label="Caption edit karein"
+                      title="Edit caption"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      className="delete-btn"
+                      onClick={(e) => handleDelete(index, e)}
+                      aria-label="Delete photo"
+                      title="Delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </>
                 )}
               </div>
             ))}
@@ -372,6 +421,15 @@ export default function Page() {
         <AdminUpload
           onClose={() => setShowUpload(false)}
           onAdd={handleAddPhoto}
+        />
+      )}
+      {editTarget && isAdmin && (
+        <AdminEdit
+          photoSrc={editTarget.image.src}
+          initialTitle={editTarget.image.title}
+          initialDetail={editTarget.image.detail}
+          onClose={() => setEditTarget(null)}
+          onSave={handleEditSave}
         />
       )}
     </main>

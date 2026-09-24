@@ -16,10 +16,13 @@ export async function POST(req: NextRequest) {
     }
 
     const resendKey = process.env.RESEND_API_KEY
-    const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'
+    const fromEmail = process.env.RESEND_FROM_EMAIL
 
     // Agar Resend API key hai to asli email bhejo
     if (resendKey) {
+      if (!fromEmail) {
+        return NextResponse.json({ error: 'RESEND_FROM_EMAIL env var set nahi hai' }, { status: 500 })
+      }
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
