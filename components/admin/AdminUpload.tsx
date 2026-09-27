@@ -13,14 +13,68 @@ type Picked = {
 type Props = {
   albums: string[]
   onClose: () => void
-  onAddMany: (images: GalleryImage[]) => Promise<void>
+  onAddMany: (images: GalleryImage[]) => Promise<boolean>
 }
 
-const MAX_MB = 5
+const MAX_MB = 25
 
 function fileTitle(name: string): string {
   const base = name.replace(/\.[a-zA-Z0-9]+$/, '').replace(/[-_]+/g, ' ').trim()
   return base || 'Photo'
+}
+
+/* Photo ko upload se pehle chhota karo — 1920px max, JPEG.
+   5MB ki photo ~400KB ki ho jati hai = upload 10x tez. */
+async function compressImage(file: File): Promise<Blob> {
+  const MAX_EDGE = 1920
+  const QUALITY = 0.82
+  let source: CanvasImageSource
+  let sw: number
+  let sh: number
+  let closeBmp: (() => void) | undefined
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions)
+    source = bmp; sw = bmp.width; sh = bmp.height
+    closeBmp = () => bmp.close()
+  } catch {
+    // Purane browser ke liye fallback
+    const url = URL.createObjectURL(file)
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image()
+        el.onload = () => resolve(el)
+        el.onerror = () => reject(new Error('photo load nahi hui'))
+        el.src = url
+      })
+      source = img; sw = img.naturalWidth; sh = img.naturalHeight
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+  try {
+    const scale = Math.min(1, MAX_EDGE / Math.max(sw, sh))
+    const w = Math.max(1, Math.round(sw * scale))
+    const h = Math.max(1, Math.round(sh * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w; canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('canvas nahi bana')
+    ctx.drawImage(source, 0, 0, w, h)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', QUALITY))
+    if (!blob) throw new Error('compress nahi hua')
+    return blob
+  } finally {
+    closeBmp?.()
+  }
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
 }
 
 export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
@@ -28,6 +82,7 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
   const [album, setAlbum] = useState('')
   const [detail, setDetail] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [progress, setProgress] = useState('')
   const [error, setError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -38,7 +93,7 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
     for (const file of Array.from(list)) {
       if (!file.type.startsWith('image/')) continue
       if (file.size > MAX_MB * 1024 * 1024) {
-        setError(`"${file.name}" 5MB se badi hai — chhoti karke phir chunein`)
+        setError(`"${file.name}" bahut badi hai (max ${MAX_MB}MB)`)
         continue
       }
       const preview = URL.createObjectURL(file)
@@ -61,35 +116,60 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
 
   const handleUpload = async () => {
     setError('')
+    setProgress('')
     if (picked.length === 0) { setError('Pehle photos chunein'); return }
+    const files = [...picked]
+    const albumName = album.trim()
+    const commonDetail = detail.trim()
     setUploading(true)
+
+    // Upload ke dauraan page band/refresh karne par warning do
+    const guard = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', guard)
+
+    const okIndices = new Set<number>()
+    let failed = 0
     try {
-      const albumName = album.trim()
-      const images: GalleryImage[] = await Promise.all(
-        picked.map(async (p, i) => {
-          const dataUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader()
-            reader.onload = () => resolve(reader.result as string)
-            reader.onerror = reject
-            reader.readAsDataURL(p.file)
-          })
-          return {
-            title: p.title.trim() || `Photo ${i + 1}`,
-            detail: detail.trim(),
-            alt: p.title.trim() || `Photo ${i + 1}`,
+      // Ek-ek karke upload — jo ho gayi wo server par safe,
+      // beech me page refresh ho to bhi dobara nahi karni padegi
+      for (let i = 0; i < files.length; i++) {
+        const p = files[i]
+        try {
+          setProgress(`Photo ${i + 1}/${files.length} taiyaar ho rahi hai…`)
+          const small = await compressImage(p.file)
+          const dataUrl = await blobToDataUrl(small)
+          const title = p.title.trim() || `Photo ${i + 1}`
+          setProgress(`Photo ${i + 1}/${files.length} upload ho rahi hai…`)
+          const saved = await onAddMany([{
+            title,
+            detail: commonDetail,
+            alt: title,
             src: dataUrl,
             width: 4,
             height: 4,
             ...(albumName ? { album: albumName } : {}),
-          } as GalleryImage
-        }),
-      )
-      await onAddMany(images)
-      picked.forEach((p) => URL.revokeObjectURL(p.preview))
+          } as GalleryImage])
+          if (!saved) throw new Error('server save fail')
+          okIndices.add(i)
+          URL.revokeObjectURL(p.preview)
+        } catch {
+          failed++
+        }
+      }
+    } finally {
+      window.removeEventListener('beforeunload', guard)
+    }
+
+    setUploading(false)
+    setProgress('')
+    if (okIndices.size > 0) {
+      // Jo upload ho gayi unhe list se hatao taaki dobara na jayein
+      setPicked((prev) => prev.filter((_, idx) => !okIndices.has(idx)))
+    }
+    if (failed > 0) {
+      setError(`${okIndices.size} photo upload ho gayi, ${failed} reh gayi — dobara try karein`)
+    } else {
       onClose()
-    } catch {
-      setError('Upload nahi ho paya — phir try karein')
-      setUploading(false)
     }
   }
 
@@ -160,8 +240,9 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
           </datalist>
 
           {error && <p className="admin-error">{error}</p>}
+          {uploading && progress && <p className="admin-progress">{progress}</p>}
           <button className="admin-btn" onClick={handleUpload} disabled={uploading || picked.length === 0}>
-            {uploading ? <><Loader2 size={16} className="spin" /> {picked.length} photos upload ho rahi hain…</> : <><Upload size={16} /> {picked.length > 0 ? `${picked.length} Photos Post karein` : 'Photos Post karein'}</>}
+            {uploading ? <><Loader2 size={16} className="spin" /> Upload ho raha hai…</> : <><Upload size={16} /> {picked.length > 0 ? `${picked.length} Photos Post karein` : 'Photos Post karein'}</>}
           </button>
         </div>
       </div>

@@ -122,7 +122,7 @@ export default function Page() {
     eyebrow: 'Konark Institute Of Science And Technology',
     title: 'SOLASTA',
     headerCopy: 'The freshers party of Batch 26 —\ncaptured in a single night.',
-    date: '19 September 2026',
+    date: '03 October 2026',
     footerHint: 'Thank you for celebrating with us.',
     journal: 'Get in touch',
   })
@@ -186,8 +186,9 @@ export default function Page() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Admin ne kayi photos ek saath post ki (bulk upload) — pehle UI me, phir server par
-  const handleAddMany = async (images: GalleryImage[]) => {
+  // Admin ne kayi photos ek saath post ki (bulk upload) — pehle UI me, phir server par.
+  // Server par save hua ya nahi, true/false me batata hai.
+  const handleAddMany = async (images: GalleryImage[]): Promise<boolean> => {
     // Pehle UI me turant dikhao
     const newCustom = [...images, ...galleryMeta.custom]
     const newAlbums = [...galleryMeta.albums]
@@ -210,7 +211,7 @@ export default function Page() {
       if (res.status === 403) {
         handleLogout()
         alert('Admin session expire ho gaya — dobara login karein')
-        return
+        return false
       }
       if (res.ok) {
         const data = await res.json()
@@ -224,8 +225,12 @@ export default function Page() {
         }
         setGalleryMeta(serverMeta)
         setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted, serverMeta.edits))
+        return true
       }
-    } catch {}
+      return false
+    } catch {
+      return false
+    }
   }
 
   // Admin ne caption edit kiya — pehle UI me, phir server par save karo
@@ -541,7 +546,9 @@ export default function Page() {
 
         <footer className="gallery-footer">
           <span>{copy.footerHint}</span>
-          <a
+          <p className="dev-credit">Developed by M'D Umar Farok</p>
+
+         <a
             className="journal-link"
             href="https://www.instagram.com/reel/DdYwxvXgfjW/?stkn=MXhpMW9jNjVubmVocg=="
             target="_blank"
@@ -549,6 +556,7 @@ export default function Page() {
           >
             {copy.journal}
           </a>
+          
         </footer>
       </div>
 
