@@ -53,6 +53,33 @@ async function registerAlbum(store: ReturnType<typeof getGalleryStore>, name: st
   return albums
 }
 
+/**
+ * Jin albums (categories) me ab koi photo nahi bachi, unhe albums.json se hatao.
+ * Uploaded photos custom.json me, bundled photos ke album edits.json me hote hain
+ * (delete hone par dono jagah se entry hat jati hai, isliye bachi hui entries
+ * ka matlab hai photo abhi bhi gallery me dikh rahi hai).
+ */
+async function pruneEmptyAlbums(store: ReturnType<typeof getGalleryStore>): Promise<void> {
+  const [custom, edits, albums] = await Promise.all([
+    ((await store.get('custom.json', { type: 'json' }).catch(() => null)) || []) as GalleryImage[],
+    (((await store.get('edits.json', { type: 'json' }).catch(() => null)) || {}) as GalleryEdits),
+    (((await store.get('albums.json', { type: 'json' }).catch(() => null)) || []) as string[]),
+  ])
+  const used = new Set<string>()
+  for (const img of custom) {
+    const a = (img.album || '').trim()
+    if (a) used.add(a)
+  }
+  for (const key of Object.keys(edits)) {
+    const a = (edits[key]?.album || '').trim()
+    if (a) used.add(a)
+  }
+  const kept = albums.filter((a) => used.has(a))
+  if (kept.length !== albums.length) {
+    await store.setJSON('albums.json', kept)
+  }
+}
+
 export async function GET() {
   try {
     const store = getGalleryStore()
@@ -157,7 +184,10 @@ export async function POST(req: NextRequest) {
         delete edits[body.src]
         await store.setJSON('edits.json', edits)
       }
-      return NextResponse.json({ ok: true })
+      // Jis category me ab koi photo nahi bachi, wo option hatao
+      await pruneEmptyAlbums(store)
+      const albums = ((await store.get('albums.json', { type: 'json' }).catch(() => null)) || []) as string[]
+      return NextResponse.json({ ok: true, albums })
     }
 
     // ---------- EDIT (caption + album) ----------
@@ -178,6 +208,8 @@ export async function POST(req: NextRequest) {
       edits[body.src] = { title, detail, ...(body.album !== undefined ? { album } : {}) }
       await store.setJSON('edits.json', edits)
       if (album) await registerAlbum(store, album)
+      // Album hataya/badla ho to khaali category saaf karo
+      await pruneEmptyAlbums(store)
       const albums = ((await store.get('albums.json', { type: 'json' }).catch(() => null)) || []) as string[]
       return NextResponse.json({ ok: true, custom: next, albums })
     }

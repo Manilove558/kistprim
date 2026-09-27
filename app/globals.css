@@ -154,6 +154,28 @@ img { max-width: 100%; }
   height: 22px;            /* width jitni hi rakhna (square rehta hai) */
   object-fit: contain;
 }
+/* KIST ab link nahi, button hai (click par college info khulti hai) — dikhne me same rahe */
+button.nav-mark {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+/* College info popup ke andar ki lines */
+.college-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.college-facts p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+.college-facts p strong { color: var(--text); }
 .nav-right {
   /* Right side ka group: admin buttons + theme toggle button */
   display: flex;

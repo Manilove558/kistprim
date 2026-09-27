@@ -85,6 +85,7 @@ export default function Page() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [showLogin, setShowLogin] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
+  const [showCollegeInfo, setShowCollegeInfo] = useState(false)
   const [editTarget, setEditTarget] = useState<{ image: GalleryImage } | null>(null)
   const [galleryMeta, setGalleryMeta] = useState<{ custom: GalleryImage[]; deleted: string[]; edits: GalleryEdits; albums: string[]; likes: Record<string, number>; useFallback: boolean }>({
     custom: [],
@@ -312,7 +313,7 @@ export default function Page() {
       }
       if (!res.ok) throw new Error('server delete fail')
       const data = await res.json()
-      const serverMeta = { custom: data.custom || newCustom, deleted: data.deleted || newDeleted, edits: data.edits || newMeta.edits, albums: galleryMeta.albums, likes: galleryMeta.likes, useFallback: false }
+      const serverMeta = { custom: data.custom || newCustom, deleted: data.deleted || newDeleted, edits: data.edits || newMeta.edits, albums: data.albums || galleryMeta.albums, likes: galleryMeta.likes, useFallback: false }
       setGalleryMeta(serverMeta)
       setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted, serverMeta.edits))
     } catch {
@@ -385,10 +386,10 @@ export default function Page() {
   return (
     <main>
       <nav className="site-nav">
-        <a className="nav-mark" href="#top">
+        <button className="nav-mark nav-mark-btn" onClick={() => setShowCollegeInfo(true)} title="College ke baare me jaano">
           <img className="nav-logo" src="/apple-icon.png" alt="KIST logo" />
           KIST
-        </a>
+        </button>
         <div className="nav-right">
           {isAdmin ? (
             <>
@@ -646,6 +647,37 @@ export default function Page() {
           onClose={() => setEditTarget(null)}
           onSave={handleEditSave}
         />
+      )}
+      {showCollegeInfo && (
+        <div className="admin-overlay" onClick={() => setShowCollegeInfo(false)}>
+          <div
+            className="admin-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="College ki jaankari"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button className="admin-close" onClick={() => setShowCollegeInfo(false)} aria-label="Band karein">
+              <X size={16} />
+            </button>
+            <div className="admin-head">
+              <div className="admin-icon">
+                <img className="nav-logo" src="/apple-icon.png" alt="KIST logo" style={{ width: 28, height: 28 }} />
+              </div>
+              <h3>Konark Institute of Science and Technology</h3>
+              <p>KIST — Bhubaneswar, Odisha</p>
+            </div>
+            <div className="college-facts">
+              <p><strong>Private</strong> engineering college — established <strong>2001</strong></p>
+              <p>Jatni, Bhubaneswar (Odisha)</p>
+              <p>Biju Patnaik University of Technology (BPUT) se affiliated · AICTE approved</p>
+              <p>Courses: B.Tech, M.Tech, MBA</p>
+            </div>
+            <a className="admin-btn" href="https://www.kist.ac.in" target="_blank" rel="noreferrer">
+              College website kholo
+            </a>
+          </div>
+        </div>
       )}
     </main>
   )
