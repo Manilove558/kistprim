@@ -54,17 +54,11 @@ async function registerAlbum(store: ReturnType<typeof getGalleryStore>, name: st
 }
 
 /**
- * Jin albums (categories) me ab koi photo nahi bachi, unhe albums.json se hatao.
- * Uploaded photos custom.json me, bundled photos ke album edits.json me hote hain
- * (delete hone par dono jagah se entry hat jati hai, isliye bachi hui entries
- * ka matlab hai photo abhi bhi gallery me dikh rahi hai).
+ * Kaun se albums me abhi photos hain — uploaded (custom.json) + bundled (edits.json).
+ * (Delete hone par dono jagah se entry hat jati hai, isliye bachi hui entries
+ * ka matlab hai photo abhi bhi gallery me dikh rahi hai.)
  */
-async function pruneEmptyAlbums(store: ReturnType<typeof getGalleryStore>): Promise<void> {
-  const [custom, edits, albums] = await Promise.all([
-    ((await store.get('custom.json', { type: 'json' }).catch(() => null)) || []) as GalleryImage[],
-    (((await store.get('edits.json', { type: 'json' }).catch(() => null)) || {}) as GalleryEdits),
-    (((await store.get('albums.json', { type: 'json' }).catch(() => null)) || []) as string[]),
-  ])
+function getUsedAlbums(custom: GalleryImage[], edits: GalleryEdits): Set<string> {
   const used = new Set<string>()
   for (const img of custom) {
     const a = (img.album || '').trim()
@@ -74,6 +68,19 @@ async function pruneEmptyAlbums(store: ReturnType<typeof getGalleryStore>): Prom
     const a = (edits[key]?.album || '').trim()
     if (a) used.add(a)
   }
+  return used
+}
+
+/**
+ * Jin albums (categories) me ab koi photo nahi bachi, unhe albums.json se hatao.
+ */
+async function pruneEmptyAlbums(store: ReturnType<typeof getGalleryStore>): Promise<void> {
+  const [custom, edits, albums] = await Promise.all([
+    ((await store.get('custom.json', { type: 'json' }).catch(() => null)) || []) as GalleryImage[],
+    (((await store.get('edits.json', { type: 'json' }).catch(() => null)) || {}) as GalleryEdits),
+    (((await store.get('albums.json', { type: 'json' }).catch(() => null)) || []) as string[]),
+  ])
+  const used = getUsedAlbums(custom, edits)
   const kept = albums.filter((a) => used.has(a))
   if (kept.length !== albums.length) {
     await store.setJSON('albums.json', kept)
@@ -90,11 +97,22 @@ export async function GET() {
       store.get('albums.json', { type: 'json' }).catch(() => null),
       store.get('likes.json', { type: 'json' }).catch(() => null),
     ])
+    // Pehle se khaali padi categories bhi saaf karo — taaki purani khaali
+    // category agli baar page khulne par khud hat jaye (delete ka wait na karna pade)
+    const customList = (custom || []) as GalleryImage[]
+    const editsObj = (edits || {}) as GalleryEdits
+    let albumList = (albums || []) as string[]
+    const used = getUsedAlbums(customList, editsObj)
+    const keptAlbums = albumList.filter((a) => used.has(a))
+    if (keptAlbums.length !== albumList.length) {
+      albumList = keptAlbums
+      await store.setJSON('albums.json', keptAlbums).catch(() => {})
+    }
     return NextResponse.json({
-      custom: custom || [],
+      custom: customList,
       deleted: deleted || [],
-      edits: edits || {},
-      albums: albums || [],
+      edits: editsObj,
+      albums: albumList,
       likes: likes || {},
     })
   } catch {
