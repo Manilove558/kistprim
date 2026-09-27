@@ -1,19 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getStore } from '@netlify/blobs'
 import { ADMIN_EMAIL } from '@/lib/admin-auth'
 
-// POST /api/send-otp  { email, otp }
-// Sirf ADMIN_EMAIL par OTP bhejta hai.
+// Ye route hamesha dynamic rahe — static prerender mat karo
+export const dynamic = 'force-dynamic'
+
+const OTP_EXPIRY_MS = 5 * 60 * 1000 // 5 minute
+const RESEND_COOLDOWN_MS = 60 * 1000 // 1 minute me 1 OTP (spam se bachao)
+
+// POST /api/send-otp  { email }
+// OTP SERVER par banta hai aur Netlify Blobs me store hota hai (5 min valid).
+// Verify /api/verify-otp par hota hai — browser me OTP kabhi nahi banta.
 export async function POST(req: NextRequest) {
   try {
-    const { email, otp } = await req.json()
+    const { email } = await req.json()
 
-    if (!email || !otp) {
-      return NextResponse.json({ error: 'Email aur OTP chahiye' }, { status: 400 })
-    }
-
-    if (email.trim().toLowerCase() !== ADMIN_EMAIL) {
+    if (!email || email.trim().toLowerCase() !== ADMIN_EMAIL) {
       return NextResponse.json({ error: 'Sirf admin email se login ho sakta hai' }, { status: 403 })
     }
+
+    const store = getStore('solasta-gallery')
+
+    // Rate limit: 1 minute me 1 OTP — inbox spam se bachao
+    const meta = (await store.get('otp-meta.json', { type: 'json' }).catch(() => null)) as {
+      lastSentAt?: number
+    } | null
+    if (meta?.lastSentAt && Date.now() - meta.lastSentAt < RESEND_COOLDOWN_MS) {
+      const waitSec = Math.ceil((RESEND_COOLDOWN_MS - (Date.now() - meta.lastSentAt)) / 1000)
+      return NextResponse.json({ error: `Thoda ruk kar phir try karein (${waitSec}s)` }, { status: 429 })
+    }
+
+    // OTP server par banao aur store karo
+    const otp = Math.floor(100000 + Math.random() * 900000).toString()
+    await store.setJSON('otp.json', { otp, expires: Date.now() + OTP_EXPIRY_MS })
+    await store.setJSON('otp-meta.json', { lastSentAt: Date.now() })
 
     const resendKey = process.env.RESEND_API_KEY
     const fromEmail = process.env.RESEND_FROM_EMAIL
@@ -55,6 +75,7 @@ export async function POST(req: NextRequest) {
 
     // Dev / bina key ke: OTP console me log karo aur preview ke liye wapas bhejo
     // Production me RESEND_API_KEY lagana zaroori hai taaki mail sach me jaye.
+    // (Dev me bhi OTP server par store hota hai — verify /api/verify-otp par hoga.)
     console.log(`[DEV] Admin OTP for ${ADMIN_EMAIL}: ${otp}`)
     return NextResponse.json({
       ok: true,

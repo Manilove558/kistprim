@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Moon, Sun, X, Plus, LogOut, Trash2, ShieldCheck, Pencil } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, Moon, Sun, X, Plus, LogOut, Trash2, ShieldCheck, Pencil, Heart, Download } from 'lucide-react'
 import { images as initialImages, type GalleryImage, type GalleryEdits } from '@/lib/gallery-data'
 import AdminLogin from '@/components/admin/AdminLogin'
 import AdminUpload from '@/components/admin/AdminUpload'
 import AdminEdit from '@/components/admin/AdminEdit'
-import { isAdminLoggedIn, clearAdminSession } from '@/lib/admin-auth'
+import { isAdminLoggedIn, clearAdminSession, authHeaders } from '@/lib/admin-auth'
 
 type Copy = {
   eyebrow: string
@@ -18,18 +18,19 @@ type Copy = {
 }
 
 const GALLERY_STORE_KEY = 'kist_custom_gallery'
+const LIKED_STORE_KEY = 'kist_liked'
 const DELETED_STORE_KEY = 'kist_deleted_gallery'
 const EDITS_STORE_KEY = 'kist_edits_gallery'
 
 // Server (Netlify Blobs) se gallery lao — sab devices par same dikhega
 // Agar server fail ho to localStorage fallback
-async function loadGalleryFromServer(): Promise<{ custom: GalleryImage[]; deleted: string[]; edits: GalleryEdits; useFallback: boolean }> {
+async function loadGalleryFromServer(): Promise<{ custom: GalleryImage[]; deleted: string[]; edits: GalleryEdits; albums: string[]; likes: Record<string, number>; useFallback: boolean }> {
   try {
     const res = await fetch('/api/gallery', { cache: 'no-store' })
     if (!res.ok) throw new Error('api fail')
     const data = await res.json()
     if (data.fallback) throw new Error('fallback')
-    return { custom: data.custom || [], deleted: data.deleted || [], edits: data.edits || {}, useFallback: false }
+    return { custom: data.custom || [], deleted: data.deleted || [], edits: data.edits || {}, albums: data.albums || [], likes: data.likes || {}, useFallback: false }
   } catch {
     // Fallback: localStorage
     try {
@@ -39,9 +40,9 @@ async function loadGalleryFromServer(): Promise<{ custom: GalleryImage[]; delete
       const deleted = delRaw ? (JSON.parse(delRaw) as string[]) : []
       const editsRaw = localStorage.getItem(EDITS_STORE_KEY)
       const edits = editsRaw ? (JSON.parse(editsRaw) as GalleryEdits) : {}
-      return { custom, deleted, edits, useFallback: true }
+      return { custom, deleted, edits, albums: [], likes: {}, useFallback: true }
     } catch {
-      return { custom: [], deleted: [], edits: {}, useFallback: true }
+      return { custom: [], deleted: [], edits: {}, albums: [], likes: {}, useFallback: true }
     }
   }
 }
@@ -52,7 +53,13 @@ function buildGallery(custom: GalleryImage[], deleted: string[], edits: GalleryE
   const applyEdits = (img: GalleryImage): GalleryImage => {
     const e = edits[img.src]
     if (!e) return img
-    return { ...img, title: e.title, detail: e.detail, alt: e.title }
+    return {
+      ...img,
+      title: e.title,
+      detail: e.detail,
+      alt: e.title,
+      ...(e.album !== undefined ? { album: e.album || undefined } : {}),
+    }
   }
   const initial = initialImages.slice(1).filter((img) => !deletedSet.has(img.src)).map(applyEdits)
   return [...custom.map(applyEdits), ...initial]
@@ -78,12 +85,19 @@ export default function Page() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [showLogin, setShowLogin] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
-  const [editTarget, setEditTarget] = useState<{ index: number; image: GalleryImage } | null>(null)
-  const [galleryMeta, setGalleryMeta] = useState<{ custom: GalleryImage[]; deleted: string[]; edits: GalleryEdits; useFallback: boolean }>({
+  const [editTarget, setEditTarget] = useState<{ image: GalleryImage } | null>(null)
+  const [galleryMeta, setGalleryMeta] = useState<{ custom: GalleryImage[]; deleted: string[]; edits: GalleryEdits; albums: string[]; likes: Record<string, number>; useFallback: boolean }>({
     custom: [],
     deleted: [],
     edits: {},
+    albums: [],
+    likes: {},
     useFallback: true,
+  })
+  const [activeAlbum, setActiveAlbum] = useState<string | null>(null)
+  const [backingUp, setBackingUp] = useState(false)
+  const [likedSrcs, setLikedSrcs] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(LIKED_STORE_KEY) || '[]') as string[] } catch { return [] }
   })
 
   useEffect(() => {
@@ -91,8 +105,8 @@ export default function Page() {
     if (current === 'light' || current === 'dark') setTheme(current)
     setIsAdmin(isAdminLoggedIn())
     // Server se gallery load karo
-    loadGalleryFromServer().then(({ custom, deleted, edits, useFallback }) => {
-      setGalleryMeta({ custom, deleted, edits, useFallback })
+    loadGalleryFromServer().then(({ custom, deleted, edits, albums, likes, useFallback }) => {
+      setGalleryMeta({ custom, deleted, edits, albums, likes, useFallback })
       setGalleryImages(buildGallery(custom, deleted, edits))
     })
   }, [])
@@ -108,12 +122,28 @@ export default function Page() {
     eyebrow: 'Konark Institute Of Science And Technology',
     title: 'SOLASTA',
     headerCopy: 'The freshers party of Batch 26 —\ncaptured in a single night.',
-    date: '19 September 2026',
+    date: '03 October 2026',
     footerHint: 'Thank you for celebrating with us.',
     journal: 'Get in touch',
   })
 
-  const activeImage = activeIndex === null ? null : galleryImages[activeIndex]
+  // Album filter: chuna hua album ho to sirf uski photos dikhao
+  const visibleImages = useMemo(() => {
+    if (!activeAlbum) return galleryImages
+    return galleryImages.filter((img) => img.album === activeAlbum)
+  }, [galleryImages, activeAlbum])
+
+  // Albums list: server wali + photos par lagi hui (koi chhoot na jaye)
+  const allAlbums = useMemo(() => {
+    const set = new Set(galleryMeta.albums)
+    for (const img of galleryImages) {
+      const a = (img.album || '').trim()
+      if (a) set.add(a)
+    }
+    return [...set]
+  }, [galleryMeta.albums, galleryImages])
+
+  const activeImage = activeIndex === null ? null : visibleImages[activeIndex]
 
   // Lightbox caption scroll — text upar jaye to image par fade ho
   const captionTextRef = useRef<HTMLElement | null>(null)
@@ -156,10 +186,16 @@ export default function Page() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  const handleAddPhoto = async (img: GalleryImage) => {
+  // Admin ne kayi photos ek saath post ki (bulk upload) — pehle UI me, phir server par
+  const handleAddMany = async (images: GalleryImage[]) => {
     // Pehle UI me turant dikhao
-    const newCustom = [img, ...galleryMeta.custom]
-    const newMeta = { ...galleryMeta, custom: newCustom }
+    const newCustom = [...images, ...galleryMeta.custom]
+    const newAlbums = [...galleryMeta.albums]
+    for (const img of images) {
+      const a = (img.album || '').trim()
+      if (a && !newAlbums.includes(a)) newAlbums.push(a)
+    }
+    const newMeta = { ...galleryMeta, custom: newCustom, albums: newAlbums }
     setGalleryMeta(newMeta)
     setGalleryImages(buildGallery(newCustom, newMeta.deleted, newMeta.edits))
     if (newMeta.useFallback) saveLocalFallback(newCustom, newMeta.deleted, newMeta.edits)
@@ -168,12 +204,24 @@ export default function Page() {
     try {
       const res = await fetch('/api/gallery', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add', image: img }),
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ action: 'addMany', images }),
       })
+      if (res.status === 403) {
+        handleLogout()
+        alert('Admin session expire ho gaya — dobara login karein')
+        return
+      }
       if (res.ok) {
         const data = await res.json()
-        const serverMeta = { custom: data.custom || newCustom, deleted: data.deleted || newMeta.deleted, edits: data.edits || newMeta.edits, useFallback: false }
+        const serverMeta = {
+          custom: data.custom || newCustom,
+          deleted: data.deleted || newMeta.deleted,
+          edits: data.edits || newMeta.edits,
+          albums: data.albums || newAlbums,
+          likes: galleryMeta.likes,
+          useFallback: false,
+        }
         setGalleryMeta(serverMeta)
         setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted, serverMeta.edits))
       }
@@ -181,38 +229,58 @@ export default function Page() {
   }
 
   // Admin ne caption edit kiya — pehle UI me, phir server par save karo
-  const handleEditSave = async (title: string, detail: string) => {
+  const handleEditSave = async (title: string, detail: string, album: string) => {
     if (!editTarget) return
     const src = editTarget.image.src
-    const newEdits = { ...galleryMeta.edits, [src]: { title, detail } }
-    const newMeta = { ...galleryMeta, edits: newEdits }
+    const newEdits: GalleryEdits = { ...galleryMeta.edits, [src]: { title, detail, album } }
+    // Uploaded photos ka title/album custom me bhi update karo (optimistic)
+    const newCustom = galleryMeta.custom.map((c) =>
+      c.src === src ? { ...c, title, detail, album: album || undefined } : c,
+    )
+    const newAlbums = [...galleryMeta.albums]
+    if (album && !newAlbums.includes(album)) newAlbums.push(album)
+    const newMeta = { ...galleryMeta, edits: newEdits, custom: newCustom, albums: newAlbums }
     setGalleryMeta(newMeta)
-    setGalleryImages(buildGallery(newMeta.custom, newMeta.deleted, newEdits))
-    if (newMeta.useFallback) saveLocalFallback(newMeta.custom, newMeta.deleted, newEdits)
+    setGalleryImages(buildGallery(newCustom, newMeta.deleted, newEdits))
+    if (newMeta.useFallback) saveLocalFallback(newCustom, newMeta.deleted, newEdits)
     setEditTarget(null)
 
     try {
       const res = await fetch('/api/gallery', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'edit', src, title, detail }),
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ action: 'edit', src, title, detail, album }),
       })
+      if (res.status === 403) {
+        handleLogout()
+        alert('Admin session expire ho gaya — dobara login karein')
+        return
+      }
       if (res.ok) {
         const data = await res.json()
-        const serverMeta = { custom: data.custom || newMeta.custom, deleted: data.deleted || newMeta.deleted, edits: data.edits || newEdits, useFallback: false }
+        const serverMeta = {
+          custom: data.custom || newCustom,
+          deleted: data.deleted || newMeta.deleted,
+          edits: data.edits || newEdits,
+          albums: data.albums || newAlbums,
+          likes: galleryMeta.likes,
+          useFallback: false,
+        }
         setGalleryMeta(serverMeta)
         setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted, serverMeta.edits))
       }
     } catch {}
   }
 
-  const handleDelete = async (index: number, e: React.MouseEvent) => {
+  const handleDelete = async (src: string, e: React.MouseEvent) => {
     e.stopPropagation()
     if (!confirm('Ye photo delete karein?')) return
-    const target = galleryImages[index]
+    const target = galleryImages.find((g) => g.src === src)
     if (!target) return
 
-    // UI se turant hatao
+    // UI se turant hatao — agar server par fail hua to neeche wapas layenge
+    const prevMeta = galleryMeta
+    const prevImages = galleryImages
     const newCustom = galleryMeta.custom.filter((c) => c.src !== target.src)
     // Sirf purani bundled photos (/photos/...) deleted list me jati hain;
     // uploaded photos (data: ya /api/photo/) server se hi delete hoti hain
@@ -229,16 +297,79 @@ export default function Page() {
     try {
       const res = await fetch('/api/gallery', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ action: 'delete', src: target.src }),
+      })
+      if (res.status === 403) {
+        handleLogout()
+        alert('Admin session expire ho gaya — dobara login karein')
+        return
+      }
+      if (!res.ok) throw new Error('server delete fail')
+      const data = await res.json()
+      const serverMeta = { custom: data.custom || newCustom, deleted: data.deleted || newDeleted, edits: data.edits || newMeta.edits, albums: galleryMeta.albums, likes: galleryMeta.likes, useFallback: false }
+      setGalleryMeta(serverMeta)
+      setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted, serverMeta.edits))
+    } catch {
+      // Server par delete nahi hua — photo wapas lao taaki "wapas aa gayi" ka confusion na ho
+      setGalleryMeta(prevMeta)
+      setGalleryImages(prevImages)
+      alert('Photo delete nahi ho payi — phir try karein')
+    }
+  }
+
+  // Student ne photo like/unlike ki — bina login ke; dobara dabane par like hat jata hai
+  const handleLike = async (src: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const isLiked = likedSrcs.includes(src)
+    try {
+      const next = isLiked ? likedSrcs.filter((s) => s !== src) : [...likedSrcs, src]
+      setLikedSrcs(next)
+      localStorage.setItem(LIKED_STORE_KEY, JSON.stringify(next))
+      // Pehle UI me turant badlo
+      setGalleryMeta((prev) => ({
+        ...prev,
+        likes: { ...prev.likes, [src]: Math.max(0, (prev.likes[src] || 0) + (isLiked ? -1 : 1)) },
+      }))
+      // Phir server par save karo
+      const res = await fetch('/api/like', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ src, action: isLiked ? 'unlike' : 'like' }),
       })
       if (res.ok) {
         const data = await res.json()
-        const serverMeta = { custom: data.custom || newCustom, deleted: data.deleted || newDeleted, edits: data.edits || newMeta.edits, useFallback: false }
-        setGalleryMeta(serverMeta)
-        setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted, serverMeta.edits))
+        setGalleryMeta((prev) => ({ ...prev, likes: { ...prev.likes, [src]: data.likes } }))
       }
     } catch {}
+  }
+
+  // Admin: saari uploaded photos ka ZIP backup download karo
+  const handleBackup = async () => {
+    if (backingUp) return
+    setBackingUp(true)
+    try {
+      const res = await fetch('/api/backup', { headers: { ...authHeaders() } })
+      if (res.status === 403) {
+        handleLogout()
+        alert('Admin session expire ho gaya — dobara login karein')
+        return
+      }
+      if (!res.ok) throw new Error('backup fail')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `solasta-backup-${new Date().toISOString().slice(0, 10)}.zip`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('Backup download nahi ho paya — phir try karein')
+    } finally {
+      setBackingUp(false)
+    }
   }
 
   const handleLogout = () => {
@@ -301,7 +432,7 @@ export default function Page() {
           <p className="hero-copy">{copy.headerCopy}</p>
           <div className="hero-meta">
             <span>{copy.date}</span>
-            <span>{galleryImages.length} photographs</span>
+            <span>{visibleImages.length} photographs</span>
           </div>
           {isAdmin && (
             <button className="hero-post-btn" onClick={() => setShowUpload(true)}>
@@ -316,11 +447,42 @@ export default function Page() {
           <div className="gallery-section-head">
             <h2>The gallery</h2>
             <p>Every frame from the night, in order.</p>
-            {isAdmin && <p className="admin-note">Admin mode: photos par edit/delete button dikhega.</p>}
+            {isAdmin && (
+              <p className="admin-note">
+                Admin mode: photos par edit/delete button dikhega.
+                <button className="backup-btn" onClick={handleBackup} disabled={backingUp} title="Saari photos ka backup download karein">
+                  <Download size={13} /> {backingUp ? 'Backup ban raha…' : 'Backup download'}
+                </button>
+              </p>
+            )}
           </div>
 
+          {allAlbums.length > 0 && (
+            <div className="album-chips" role="tablist" aria-label="Albums">
+              <button
+                className={`album-chip${!activeAlbum ? ' active' : ''}`}
+                onClick={() => setActiveAlbum(null)}
+                role="tab"
+                aria-selected={!activeAlbum}
+              >
+                Sab
+              </button>
+              {allAlbums.map((a) => (
+                <button
+                  key={a}
+                  className={`album-chip${activeAlbum === a ? ' active' : ''}`}
+                  onClick={() => setActiveAlbum(activeAlbum === a ? null : a)}
+                  role="tab"
+                  aria-selected={activeAlbum === a}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="gallery-grid" aria-label="Photo gallery">
-            {galleryImages.map((image, index) => (
+            {visibleImages.map((image, index) => (
               <div key={`${image.src}-${index}`} className="gallery-card-wrap">
                 <button
                   className={`gallery-card card-${index + 1}`}
@@ -341,11 +503,22 @@ export default function Page() {
                     <small>{image.detail}</small>
                   </span>
                 </button>
+                <button
+                  className={`like-btn${likedSrcs.includes(image.src) ? ' liked' : ''}`}
+                  onClick={(e) => handleLike(image.src, e)}
+                  aria-label="Photo like karein"
+                  title="Like"
+                >
+                  <Heart size={14} fill={likedSrcs.includes(image.src) ? 'currentColor' : 'none'} />
+                  {(galleryMeta.likes[image.src] || 0) > 0 && (
+                    <span className="like-count">{galleryMeta.likes[image.src]}</span>
+                  )}
+                </button>
                 {isAdmin && (
                   <>
                     <button
                       className="edit-btn"
-                      onClick={(e) => { e.stopPropagation(); setEditTarget({ index, image }) }}
+                      onClick={(e) => { e.stopPropagation(); setEditTarget({ image }) }}
                       aria-label="Caption edit karein"
                       title="Edit caption"
                     >
@@ -353,7 +526,7 @@ export default function Page() {
                     </button>
                     <button
                       className="delete-btn"
-                      onClick={(e) => handleDelete(index, e)}
+                      onClick={(e) => handleDelete(image.src, e)}
                       aria-label="Delete photo"
                       title="Delete"
                     >
@@ -394,7 +567,7 @@ export default function Page() {
             className="lightbox-arrow previous"
             onClick={(event) => {
               event.stopPropagation()
-              setActiveIndex((activeIndex - 1 + galleryImages.length) % galleryImages.length)
+              setActiveIndex((activeIndex - 1 + visibleImages.length) % visibleImages.length)
             }}
             aria-label="Previous image"
           >
@@ -404,8 +577,19 @@ export default function Page() {
             <img className="lightbox-image" src={activeImage.src} alt={activeImage.alt} />
             <div className="lightbox-caption">
               <div className="lightbox-caption-head">
-                <span className="lightbox-count">{String(activeIndex + 1).padStart(2, '0')} / {String(galleryImages.length).padStart(2, '0')}</span>
+                <span className="lightbox-count">{String(activeIndex + 1).padStart(2, '0')} / {String(visibleImages.length).padStart(2, '0')}</span>
                 <strong>{activeImage.title}</strong>
+                <button
+                  className={`lightbox-like${likedSrcs.includes(activeImage.src) ? ' liked' : ''}`}
+                  onClick={(event) => handleLike(activeImage.src, event)}
+                  aria-label="Photo like karein"
+                  title="Like"
+                >
+                  <Heart size={16} fill={likedSrcs.includes(activeImage.src) ? 'currentColor' : 'none'} />
+                  {(galleryMeta.likes[activeImage.src] || 0) > 0 && (
+                    <span>{galleryMeta.likes[activeImage.src]}</span>
+                  )}
+                </button>
               </div>
               {activeImage.detail && (
                 <small
@@ -422,7 +606,7 @@ export default function Page() {
             className="lightbox-arrow next"
             onClick={(event) => {
               event.stopPropagation()
-              setActiveIndex((activeIndex + 1) % galleryImages.length)
+              setActiveIndex((activeIndex + 1) % visibleImages.length)
             }}
             aria-label="Next image"
           >
@@ -439,8 +623,9 @@ export default function Page() {
       )}
       {showUpload && isAdmin && (
         <AdminUpload
+          albums={allAlbums}
           onClose={() => setShowUpload(false)}
-          onAdd={handleAddPhoto}
+          onAddMany={handleAddMany}
         />
       )}
       {editTarget && isAdmin && (
@@ -448,6 +633,8 @@ export default function Page() {
           photoSrc={editTarget.image.src}
           initialTitle={editTarget.image.title}
           initialDetail={editTarget.image.detail}
+          initialAlbum={editTarget.image.album}
+          albums={allAlbums}
           onClose={() => setEditTarget(null)}
           onSave={handleEditSave}
         />

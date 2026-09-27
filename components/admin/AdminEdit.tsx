@@ -7,13 +7,16 @@ type Props = {
   photoSrc: string
   initialTitle: string
   initialDetail: string
+  initialAlbum?: string
+  albums: string[]
   onClose: () => void
-  onSave: (title: string, detail: string) => Promise<void> | void
+  onSave: (title: string, detail: string, album: string) => Promise<void> | void
 }
 
-export default function AdminEdit({ photoSrc, initialTitle, initialDetail, onClose, onSave }: Props) {
+export default function AdminEdit({ photoSrc, initialTitle, initialDetail, initialAlbum, albums, onClose, onSave }: Props) {
   const [title, setTitle] = useState(initialTitle)
   const [detail, setDetail] = useState(initialDetail)
+  const [album, setAlbum] = useState(initialAlbum || '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -22,7 +25,7 @@ export default function AdminEdit({ photoSrc, initialTitle, initialDetail, onClo
     if (!title.trim()) { setError('Title khaali nahi ho sakta'); return }
     setLoading(true)
     try {
-      await onSave(title.trim(), detail.trim())
+      await onSave(title.trim(), detail.trim(), album.trim())
       onClose()
     } catch {
       setError('Save nahi ho paya, dobara try karein')
@@ -38,7 +41,7 @@ export default function AdminEdit({ photoSrc, initialTitle, initialDetail, onClo
         <div className="admin-head">
           <span className="admin-icon"><Pencil size={22} /></span>
           <h3>Caption Edit karein</h3>
-          <p>Title aur detail badal sakte ho</p>
+          <p>Title, detail aur album badal sakte ho</p>
         </div>
         <div className="admin-body">
           <img src={photoSrc} alt="" className="admin-edit-thumb" />
@@ -61,6 +64,19 @@ export default function AdminEdit({ photoSrc, initialTitle, initialDetail, onClo
             maxLength={500}
             placeholder="Photo ke baare me likhein"
           />
+
+          <label className="admin-label">Album (khaali = koi album nahi)</label>
+          <input
+            value={album}
+            onChange={(e) => setAlbum(e.target.value)}
+            className="admin-input"
+            maxLength={40}
+            placeholder="Album ka naam"
+            list="album-options-edit"
+          />
+          <datalist id="album-options-edit">
+            {albums.map((a) => <option key={a} value={a} />)}
+          </datalist>
 
           {error && <p className="admin-error">{error}</p>}
           <button className="admin-btn" onClick={handleSave} disabled={loading}>

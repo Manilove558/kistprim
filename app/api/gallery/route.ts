@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStore } from '@netlify/blobs'
 import type { GalleryImage, GalleryEdits } from '@/lib/gallery-data'
+import { verifyAdminToken, getTokenFromRequest } from '@/lib/admin-token'
 
 // Ye route hamesha dynamic rahe — static prerender mat karo
 export const dynamic = 'force-dynamic'
@@ -14,102 +15,184 @@ function getGalleryStore() {
   return getStore('solasta-gallery')
 }
 
+/**
+ * Browser se aayi base64 photo ko alag blob file me daal kar
+ * image ka src us blob ke /api/photo/... link se badal do.
+ * (Lazy loading isi se kaam karta hai.)
+ */
+async function storeImageBlob(store: ReturnType<typeof getGalleryStore>, image: GalleryImage): Promise<GalleryImage> {
+  if (!image.src.startsWith('data:')) return image
+  const match = image.src.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.*)$/)
+  if (!match) return image
+  const mimeType = match[1]
+  const base64 = match[2]
+  // ~6MB raw limit (base64 me ~8MB) — server-side safety check
+  if (base64.length > 8 * 1024 * 1024) throw new Error('Photo bahut badi hai (max 5MB)')
+  const ext = mimeType.split('/')[1].replace('jpeg', 'jpg').split('+')[0] || 'jpg'
+  const uniqueId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  const blobKey = `photos/${uniqueId}.${ext}`
+  const bytes = Buffer.from(base64, 'base64')
+  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+  // Blob me type rakho taaki /api/photo sahi Content-Type de sake
+  await store.set(blobKey, new Blob([ab], { type: mimeType }))
+  return { ...image, src: `/api/photo/${blobKey}` }
+}
+
+function cleanAlbumName(name: unknown): string {
+  if (typeof name !== 'string') return ''
+  return name.trim().slice(0, 40)
+}
+
+/** Album ko albums.json me register karo (duplicate nahi), updated list wapas do. */
+async function registerAlbum(store: ReturnType<typeof getGalleryStore>, name: string): Promise<string[]> {
+  const albums = ((await store.get('albums.json', { type: 'json' }).catch(() => null)) || []) as string[]
+  if (!albums.includes(name)) {
+    albums.push(name)
+    await store.setJSON('albums.json', albums)
+  }
+  return albums
+}
+
 export async function GET() {
   try {
     const store = getGalleryStore()
-    const custom = await store.get('custom.json', { type: 'json' }).catch(() => null)
-    const deleted = await store.get('deleted.json', { type: 'json' }).catch(() => null)
-    const edits = await store.get('edits.json', { type: 'json' }).catch(() => null)
+    const [custom, deleted, edits, albums, likes] = await Promise.all([
+      store.get('custom.json', { type: 'json' }).catch(() => null),
+      store.get('deleted.json', { type: 'json' }).catch(() => null),
+      store.get('edits.json', { type: 'json' }).catch(() => null),
+      store.get('albums.json', { type: 'json' }).catch(() => null),
+      store.get('likes.json', { type: 'json' }).catch(() => null),
+    ])
     return NextResponse.json({
-      custom: (custom as GalleryImage[] | null) || [],
-      deleted: (deleted as string[] | null) || [],
-      edits: (edits as GalleryEdits | null) || {},
+      custom: custom || [],
+      deleted: deleted || [],
+      edits: edits || {},
+      albums: albums || [],
+      likes: likes || {},
     })
-  } catch (e) {
-    // Local dev ya Blobs configure nahi — client localStorage fallback use karega
-    return NextResponse.json({ custom: [], deleted: [], edits: {}, fallback: true })
+  } catch {
+    // Server down ho to client localStorage fallback use karega
+    return NextResponse.json({ custom: [], deleted: [], edits: {}, albums: [], likes: {}, fallback: true })
   }
 }
 
 export async function POST(req: NextRequest) {
+  // 🔒 Sirf valid admin token wale add/edit/delete/album kar sakte hain
+  if (!verifyAdminToken(getTokenFromRequest(req))) {
+    return NextResponse.json({ ok: false, error: 'Admin login zaroori hai' }, { status: 403 })
+  }
+
+  const body = await req.json().catch(() => null)
+  if (!body || typeof body.action !== 'string') {
+    return NextResponse.json({ ok: false, error: 'Galat request' }, { status: 400 })
+  }
+
+  const store = getGalleryStore()
+
   try {
-    const body = await req.json()
-    const { action, image, src, title, detail } = body as {
-      action: 'add' | 'delete' | 'edit'
-      image?: GalleryImage
-      src?: string
-      title?: string
-      detail?: string
+    // ---------- ADD (single photo) ----------
+    if (body.action === 'add' && body.image) {
+      const image = (await storeImageBlob(store, body.image as GalleryImage)) as GalleryImage
+      const custom = ((await store.get('custom.json', { type: 'json' }).catch(() => null)) || []) as GalleryImage[]
+      const next = [image, ...custom.filter((img) => img.src !== image.src)]
+      await store.setJSON('custom.json', next)
+      const album = cleanAlbumName(image.album)
+      if (album) await registerAlbum(store, album)
+      return NextResponse.json({ ok: true, custom: next })
     }
 
-    const store = getGalleryStore()
-    let custom = ((await store.get('custom.json', { type: 'json' }).catch(() => null)) as GalleryImage[] | null) || []
-    let deleted = ((await store.get('deleted.json', { type: 'json' }).catch(() => null)) as string[] | null) || []
-    const edits = ((await store.get('edits.json', { type: 'json' }).catch(() => null)) as GalleryEdits | null) || {}
+    // ---------- ADD MANY (bulk upload — ek baar me max 50) ----------
+    if (body.action === 'addMany' && Array.isArray(body.images)) {
+      const incoming = (body.images as GalleryImage[]).slice(0, 50)
+      const processed: GalleryImage[] = []
+      for (const raw of incoming) {
+        if (!raw || typeof raw.src !== 'string') continue
+        processed.push(await storeImageBlob(store, raw))
+      }
+      const custom = ((await store.get('custom.json', { type: 'json' }).catch(() => null)) || []) as GalleryImage[]
+      const seen = new Set(processed.map((p) => p.src))
+      const next = [...processed, ...custom.filter((img) => !seen.has(img.src))]
+      await store.setJSON('custom.json', next)
+      let albums: string[] = []
+      for (const p of processed) {
+        const album = cleanAlbumName(p.album)
+        if (album) albums = await registerAlbum(store, album)
+      }
+      return NextResponse.json({ ok: true, custom: next, added: processed.length, albums })
+    }
 
-    if (action === 'add' && image) {
-      let finalImage = image
-      // Base64 photo ko alag blob file me save karo — taaki browser use lazy-load
-      // kar sake (poori gallery JSON me ghusa hone se page slow hota hai)
-      if (image.src.startsWith('data:')) {
-        const match = image.src.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.*)$/)
-        if (match) {
-          const mimeType = match[1]
-          const base64 = match[2]
-          const ext = mimeType.split('/')[1].replace('jpeg', 'jpg').split('+')[0] || 'jpg'
-          const uniqueId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-          const blobKey = `photos/${uniqueId}.${ext}`
-          const buffer = Buffer.from(base64, 'base64')
-          await store.set(blobKey, buffer, { contentType: mimeType })
-          // JSON me sirf photo ka link rakho, poori photo nahi
-          finalImage = { ...image, src: `/api/photo/${blobKey}` }
+    // ---------- DELETE ----------
+    if (body.action === 'delete' && body.src) {
+      const custom = ((await store.get('custom.json', { type: 'json' }).catch(() => null)) || []) as GalleryImage[]
+      const target = custom.find((img) => img.src === body.src)
+
+      if (target) {
+        // Uploaded photo: custom.json se hatao + blob file bhi hatao
+        if (target.src.startsWith('/api/photo/')) {
+          const blobKey = decodeURIComponent(target.src.slice('/api/photo/'.length))
+          if (blobKey.startsWith('photos/')) {
+            await store.delete(blobKey).catch(() => {})
+          }
         }
-      }
-      // Duplicate se bachao
-      if (!custom.some((c) => c.src === finalImage.src)) {
-        custom.unshift(finalImage)
-        await store.setJSON('custom.json', custom)
-      }
-    } else if (action === 'delete' && src) {
-      // Custom photo hai to list se hatao
-      const beforeLen = custom.length
-      custom = custom.filter((c) => c.src !== src)
-      if (custom.length !== beforeLen) {
-        await store.setJSON('custom.json', custom)
-      }
-      // Agar ye uploaded blob photo hai to uski file bhi delete karo (storage saaf rahe)
-      if (src.startsWith('/api/photo/')) {
-        const blobKey = decodeURIComponent(src.slice('/api/photo/'.length))
-        if (blobKey.startsWith('photos/')) {
-          await store.delete(blobKey).catch(() => {})
-        }
-      }
-      // Purani bundled photo hai (/photos/...) to deleted list me dalo taaki wapas na aye
-      if (src.startsWith('/photos/')) {
-        if (!deleted.includes(src)) {
-          deleted.push(src)
+        const next = custom.filter((img) => img.src !== body.src)
+        await store.setJSON('custom.json', next)
+      } else {
+        // Bundled photo (/photos/* repo me hai) — deleted.json hide-list me daalo
+        const deleted = ((await store.get('deleted.json', { type: 'json' }).catch(() => null)) || []) as string[]
+        if (!deleted.includes(body.src)) {
+          deleted.push(body.src)
           await store.setJSON('deleted.json', deleted)
         }
       }
-    } else if (action === 'edit' && src) {
-      // Admin ne caption edit kiya — src ke hisaab se title/detail save karo
-      const t = (title || '').trim()
-      const d = (detail || '').trim()
-      if (!t) {
-        return NextResponse.json({ error: 'Title khaali nahi ho sakta' }, { status: 400 })
+
+      // Is photo ke likes bhi saaf karo
+      const likes = ((await store.get('likes.json', { type: 'json' }).catch(() => null)) || {}) as Record<string, number>
+      if (likes[body.src] !== undefined) {
+        delete likes[body.src]
+        await store.setJSON('likes.json', likes)
       }
-      edits[src] = { title: t, detail: d }
-      await store.setJSON('edits.json', edits)
-    } else {
-      return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+      // Caption edits ki stale entry bhi hatao
+      const edits = ((await store.get('edits.json', { type: 'json' }).catch(() => null)) || {}) as GalleryEdits
+      if (edits[body.src]) {
+        delete edits[body.src]
+        await store.setJSON('edits.json', edits)
+      }
+      return NextResponse.json({ ok: true })
     }
 
-    return NextResponse.json({ ok: true, custom, deleted, edits })
-  } catch (e) {
-    console.error('Gallery API error:', e)
-    return NextResponse.json(
-      { error: 'Storage me problem hui — kya site Netlify par deploy hai?' },
-      { status: 500 }
-    )
+    // ---------- EDIT (caption + album) ----------
+    if (body.action === 'edit' && body.src) {
+      const title = typeof body.title === 'string' ? body.title.trim().slice(0, 80) : ''
+      const detail = typeof body.detail === 'string' ? body.detail.trim().slice(0, 500) : ''
+      const album = cleanAlbumName(body.album)
+      const custom = ((await store.get('custom.json', { type: 'json' }).catch(() => null)) || []) as GalleryImage[]
+      const next = custom.map((img) =>
+        img.src === body.src
+          ? { ...img, title, detail, ...(body.album !== undefined ? { album: album || undefined } : {}) }
+          : img,
+      )
+      await store.setJSON('custom.json', next)
+      // Caption edit edits.json me bhi save karo taaki sab devices par same dikhe
+      // (bundled photos ka album bhi yahin se lagta hai)
+      const edits = ((await store.get('edits.json', { type: 'json' }).catch(() => null)) || {}) as GalleryEdits
+      edits[body.src] = { title, detail, ...(body.album !== undefined ? { album } : {}) }
+      await store.setJSON('edits.json', edits)
+      if (album) await registerAlbum(store, album)
+      const albums = ((await store.get('albums.json', { type: 'json' }).catch(() => null)) || []) as string[]
+      return NextResponse.json({ ok: true, custom: next, albums })
+    }
+
+    // ---------- ALBUM CREATE ----------
+    if (body.action === 'album-create' && body.name) {
+      const name = cleanAlbumName(body.name)
+      if (!name) return NextResponse.json({ ok: false, error: 'Album ka naam khaali hai' }, { status: 400 })
+      const albums = await registerAlbum(store, name)
+      return NextResponse.json({ ok: true, albums })
+    }
+
+    return NextResponse.json({ ok: false, error: 'Unknown action' }, { status: 400 })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Server error'
+    return NextResponse.json({ ok: false, error: message }, { status: 500 })
   }
 }

@@ -4,10 +4,7 @@ import { useState } from 'react'
 import { X, Mail, ShieldCheck, Loader2 } from 'lucide-react'
 import {
   ADMIN_EMAIL,
-  generateOtp,
-  saveOtp,
-  verifyOtp,
-  setAdminSession,
+  saveAdminToken,
   isValidAdminEmail,
 } from '@/lib/admin-auth'
 
@@ -16,6 +13,8 @@ type Props = {
   onSuccess: () => void
 }
 
+// OTP server par banta aur verify hota hai — browser me kabhi nahi.
+// Isliye localStorage me OTP daal kar admin banne ka bypass ab kaam nahi karega.
 export default function AdminLogin({ onClose, onSuccess }: Props) {
   const [step, setStep] = useState<1 | 2>(1)
   const [email, setEmail] = useState('')
@@ -34,24 +33,22 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
     }
     setLoading(true)
     try {
-      const newOtp = generateOtp()
       const res = await fetch('/api/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), otp: newOtp }),
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || 'OTP bhejne me problem hui')
         return
       }
-      saveOtp(newOtp)
       setStep(2)
       if (data.sent) {
         setInfo(`${ADMIN_EMAIL} par OTP bhej diya gaya hai. 5 minute me daalein.`)
       } else {
         // Dev mode — jab tak email service configure nahi hai
-        setDevOtp(data.devPreviewOtp || newOtp)
+        setDevOtp(data.devPreviewOtp || '')
         setInfo('Email service abhi configure nahi hai, isliye OTP yahin dikh raha hai (testing ke liye).')
       }
     } catch {
@@ -61,17 +58,31 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
     }
   }
 
-  const doVerify = () => {
+  const doVerify = async () => {
     setError('')
     if (otp.trim().length !== 6) {
       setError('6-digit OTP daalein')
       return
     }
-    if (verifyOtp(otp)) {
-      setAdminSession()
+    setLoading(true)
+    try {
+      const res = await fetch('/api/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), otp: otp.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.token) {
+        setError(data.error || 'OTP verify nahi ho paya')
+        return
+      }
+      // Server se mila signed token save karo — isi se gallery actions honge
+      saveAdminToken(data.token)
       onSuccess()
-    } else {
-      setError('Galat ya expire OTP. Dobara bhejein.')
+    } catch {
+      setError('Network error — phir try karein')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -123,7 +134,9 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
             )}
             {error && <p className="admin-error">{error}</p>}
             {info && <p className="admin-info">{info}</p>}
-            <button className="admin-btn" onClick={doVerify}>Verify & Login</button>
+            <button className="admin-btn" onClick={doVerify} disabled={loading}>
+              {loading ? <><Loader2 size={16} className="spin" /> Verify ho raha…</> : 'Verify & Login'}
+            </button>
             <button className="admin-link" onClick={() => { setStep(1); setError(''); setInfo('') }}>
               Email badlein / OTP dobara bhejein
             </button>

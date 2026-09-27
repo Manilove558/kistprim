@@ -393,27 +393,32 @@ img { max-width: 100%; }
   height: min(80vh, 780px);
   margin: auto;            /* chhota content ho to center me rahe */
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .lightbox-image {
   display: block;
   width: 100%;
-  height: 100%;
+  flex: 1;                   /* bachi hui jagah image legi */
+  min-height: 0;             /* flex me image shrink ho sake */
   object-fit: contain;        /* poori photo dikhti hai, crop nahi hoti (grid wale cards se alag) */
   border-radius: 16px;
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.45);
   background: rgba(0, 0, 0, 0.25); /* photo ke aas-paas khali jagah halki dark */
 }
 .lightbox-caption {
-  /* Image ke NEECHE overlay — text image ke upar aata hai, image apni jagah rehti hai */
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  max-height: 78%;
+  /* Caption ab image ke NEECHE hai — photo par koi black gradient overlay nahi */
+  position: static;
+  flex-shrink: 0;
+  max-height: 34%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 64px 22px 22px;   /* upar zyada padding taaki gradient me text saaf dikhe */
-  background: linear-gradient(to top, rgba(0,0,0,0.92) 58%, rgba(0,0,0,0.45) 82%, transparent 100%);
-  border-radius: 0 0 16px 16px;
+  padding: 2px 6px 0;
+  background: none;
+  border-radius: 0;
   color: #f5f5f7;
 }
 .lightbox-caption-head {
@@ -445,7 +450,7 @@ img { max-width: 100%; }
 .lightbox-caption-text::-webkit-scrollbar { width: 4px; }
 .lightbox-caption-text::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.35); border-radius: 4px; }
 .lightbox-caption-text.is-faded {
-  /* Scroll karne par upar jata text image par fade hota jaye */
+  /* Scroll karne par upar jata text fade hota jaye */
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 64px);
   mask-image: linear-gradient(to bottom, transparent 0, #000 64px);
 }
@@ -630,3 +635,69 @@ img { max-width: 100%; }
 }
 .admin-upload-hint { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; padding: 24px; }
 .admin-preview { width: 100%; height: 200px; object-fit: cover; }
+
+/* ---------- Album filter chips ---------- */
+.album-chips {
+  display: flex; gap: 8px; overflow-x: auto;
+  padding: 4px 2px 12px; margin: 0 auto; max-width: 1200px;
+  scrollbar-width: none;
+}
+.album-chips::-webkit-scrollbar { display: none; }
+.album-chip {
+  flex-shrink: 0; padding: 7px 16px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent;
+  color: var(--text-secondary); font-size: 13px; cursor: pointer;
+  transition: all 0.2s;
+}
+.album-chip:hover { border-color: var(--accent); color: var(--text); }
+.album-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+/* ---------- Like button (card + lightbox) ---------- */
+.like-btn {
+  position: absolute; top: 8px; left: 8px; z-index: 5;
+  display: flex; align-items: center; gap: 5px;
+  padding: 7px 10px; border-radius: 999px; border: none; cursor: pointer;
+  background: rgba(0,0,0,0.55); color: #fff; backdrop-filter: blur(6px);
+  transition: transform 0.15s;
+}
+.like-btn:hover { transform: scale(1.08); }
+.like-btn.liked { color: #ff375f; }
+.like-count { font-size: 12px; font-weight: 600; }
+.lightbox-like {
+  margin-left: auto; display: flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+  color: #fff; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 13px;
+}
+.lightbox-like.liked { color: #ff375f; border-color: rgba(255,55,95,0.5); }
+
+/* ---------- Backup button (admin) ---------- */
+.backup-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-left: 10px; padding: 6px 12px; border-radius: 999px;
+  background: rgba(10,132,255,0.15); border: 1px solid rgba(10,132,255,0.4);
+  color: var(--accent); font-size: 12px; cursor: pointer;
+}
+.backup-btn:hover { background: rgba(10,132,255,0.28); }
+.backup-btn:disabled { opacity: 0.6; cursor: wait; }
+
+/* ---------- Bulk upload grid ---------- */
+.admin-modal-wide { max-width: 560px; }
+.bulk-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  max-height: 300px; overflow-y: auto; margin: 14px 0; padding: 2px;
+}
+.bulk-item { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.bulk-thumb { width: 100%; height: 90px; object-fit: cover; display: block; }
+.bulk-title {
+  width: 100%; border: none; border-top: 1px solid var(--line);
+  background: var(--card-bg); color: var(--text);
+  font-size: 11px; padding: 6px 8px; outline: none;
+}
+.bulk-remove {
+  position: absolute; top: 4px; right: 4px;
+  width: 24px; height: 24px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255,59,48,0.95); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.admin-btn-soft { background: transparent; border: 1px dashed var(--line); color: var(--text); margin-bottom: 4px; }
+.admin-btn-soft:hover { border-color: var(--accent); }
