@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStore } from '@netlify/blobs'
 
-// Ye route hamesha dynamic rahe — static prerender mat karo
+// Always keep this route dynamic — no static prerender
 export const dynamic = 'force-dynamic'
 
 function getGalleryStore() {
@@ -29,7 +29,7 @@ export async function GET(
     return new NextResponse(blob, {
       headers: {
         'Content-Type': blob.type || 'image/jpeg',
-        // Browser photo ko cache kar le — dobara download nahi hogi
+        // Let the browser cache the photo — it won't download again
         'Cache-Control': 'public, max-age=31536000, immutable',
       },
     })

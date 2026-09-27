@@ -23,8 +23,8 @@ function fileTitle(name: string): string {
   return base || 'Photo'
 }
 
-/* Photo ko upload se pehle chhota karo — 1920px max, JPEG.
-   5MB ki photo ~400KB ki ho jati hai = upload 10x tez. */
+/* Shrink photos before upload — 1920px max, JPEG.
+   A 5MB photo becomes ~400KB = 10x faster uploads. */
 async function compressImage(file: File): Promise<Blob> {
   const MAX_EDGE = 1920
   const QUALITY = 0.82
@@ -37,13 +37,13 @@ async function compressImage(file: File): Promise<Blob> {
     source = bmp; sw = bmp.width; sh = bmp.height
     closeBmp = () => bmp.close()
   } catch {
-    // Purane browser ke liye fallback
+    // Fallback for older browsers
     const url = URL.createObjectURL(file)
     try {
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
         const el = new Image()
         el.onload = () => resolve(el)
-        el.onerror = () => reject(new Error('photo load nahi hui'))
+        el.onerror = () => reject(new Error('photo failed to load'))
         el.src = url
       })
       source = img; sw = img.naturalWidth; sh = img.naturalHeight
@@ -58,10 +58,10 @@ async function compressImage(file: File): Promise<Blob> {
     const canvas = document.createElement('canvas')
     canvas.width = w; canvas.height = h
     const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('canvas nahi bana')
+    if (!ctx) throw new Error('canvas could not be created')
     ctx.drawImage(source, 0, 0, w, h)
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', QUALITY))
-    if (!blob) throw new Error('compress nahi hua')
+    if (!blob) throw new Error('compression failed')
     return blob
   } finally {
     closeBmp?.()
@@ -93,7 +93,7 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
     for (const file of Array.from(list)) {
       if (!file.type.startsWith('image/')) continue
       if (file.size > MAX_MB * 1024 * 1024) {
-        setError(`"${file.name}" bahut badi hai (max ${MAX_MB}MB)`)
+        setError(`"${file.name}" is too large (max ${MAX_MB}MB)`)
         continue
       }
       const preview = URL.createObjectURL(file)
@@ -117,29 +117,29 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
   const handleUpload = async () => {
     setError('')
     setProgress('')
-    if (picked.length === 0) { setError('Pehle photos chunein'); return }
+    if (picked.length === 0) { setError('Please choose photos first'); return }
     const files = [...picked]
     const albumName = album.trim()
     const commonDetail = detail.trim()
     setUploading(true)
 
-    // Upload ke dauraan page band/refresh karne par warning do
+    // Warn if the page is closed/refreshed during upload
     const guard = (e: BeforeUnloadEvent) => { e.preventDefault() }
     window.addEventListener('beforeunload', guard)
 
     const okIndices = new Set<number>()
     let failed = 0
     try {
-      // Ek-ek karke upload — jo ho gayi wo server par safe,
-      // beech me page refresh ho to bhi dobara nahi karni padegi
+      // Upload one by one — finished ones are safe on the server,
+      // so a mid-way refresh never needs a redo
       for (let i = 0; i < files.length; i++) {
         const p = files[i]
         try {
-          setProgress(`Photo ${i + 1}/${files.length} taiyaar ho rahi hai…`)
+          setProgress(`Preparing photo ${i + 1}/${files.length}…`)
           const small = await compressImage(p.file)
           const dataUrl = await blobToDataUrl(small)
           const title = p.title.trim() || `Photo ${i + 1}`
-          setProgress(`Photo ${i + 1}/${files.length} upload ho rahi hai…`)
+          setProgress(`Uploading photo ${i + 1}/${files.length}…`)
           const saved = await onAddMany([{
             title,
             detail: commonDetail,
@@ -163,11 +163,11 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
     setUploading(false)
     setProgress('')
     if (okIndices.size > 0) {
-      // Jo upload ho gayi unhe list se hatao taaki dobara na jayein
+      // Remove uploaded ones from the list so they don't repeat
       setPicked((prev) => prev.filter((_, idx) => !okIndices.has(idx)))
     }
     if (failed > 0) {
-      setError(`${okIndices.size} photo upload ho gayi, ${failed} reh gayi — dobara try karein`)
+      setError(`${okIndices.size} photo(s) uploaded, ${failed} failed — please try again`)
     } else {
       onClose()
     }
@@ -175,12 +175,12 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
 
   return (
     <div className="admin-overlay" onClick={onClose}>
-      <div className="admin-modal admin-modal-wide" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Photos post karein">
-        <button className="admin-close" onClick={onClose} aria-label="Band karein"><X size={18} /></button>
+      <div className="admin-modal admin-modal-wide" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Post photos">
+        <button className="admin-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
         <div className="admin-head">
           <span className="admin-icon"><ImagePlus size={22} /></span>
-          <h3>Photos Post karein</h3>
-          <p>Ek saath kayi photos chun sakte ho (max 50)</p>
+          <h3>Post Photos</h3>
+          <p>You can select multiple photos at once (max 50)</p>
         </div>
         <div className="admin-body">
           <input
@@ -192,7 +192,7 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
             onChange={(e) => handleFiles(e.target.files)}
           />
           <button className="admin-btn admin-btn-soft" onClick={() => inputRef.current?.click()} disabled={uploading}>
-            <ImagePlus size={16} /> Photos chunein{picked.length > 0 ? ` (${picked.length})` : ''}
+            <ImagePlus size={16} /> Choose photos{picked.length > 0 ? ` (${picked.length})` : ''}
           </button>
 
           {picked.length > 0 && (
@@ -206,9 +206,9 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
                     className="bulk-title"
                     maxLength={80}
                     placeholder="Title"
-                    aria-label={`Photo ${i + 1} ka title`}
+                    aria-label={`Title for photo ${i + 1}`}
                   />
-                  <button className="bulk-remove" onClick={() => removeAt(i)} aria-label="Hatayein" title="Hatayein">
+                  <button className="bulk-remove" onClick={() => removeAt(i)} aria-label="Remove" title="Remove">
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -216,14 +216,14 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
             </div>
           )}
 
-          <label className="admin-label">Detail (sab photos par same lagega, optional)</label>
+          <label className="admin-label">Detail (applied to all photos, optional)</label>
           <textarea
             value={detail}
             onChange={(e) => setDetail(e.target.value)}
             className="admin-textarea"
             rows={2}
             maxLength={500}
-            placeholder="Event ke baare me ek line"
+            placeholder="One line about the event"
           />
 
           <label className="admin-label">Album (optional)</label>
@@ -232,7 +232,7 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
             onChange={(e) => setAlbum(e.target.value)}
             className="admin-input"
             maxLength={40}
-            placeholder="Jaise: Freshers 2026 — naya naam likho ya purana chuno"
+            placeholder="E.g.: Freshers 2026 — type a new name or pick an existing one"
             list="album-options"
           />
           <datalist id="album-options">
@@ -242,7 +242,7 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
           {error && <p className="admin-error">{error}</p>}
           {uploading && progress && <p className="admin-progress">{progress}</p>}
           <button className="admin-btn" onClick={handleUpload} disabled={uploading || picked.length === 0}>
-            {uploading ? <><Loader2 size={16} className="spin" /> Upload ho raha hai…</> : <><Upload size={16} /> {picked.length > 0 ? `${picked.length} Photos Post karein` : 'Photos Post karein'}</>}
+            {uploading ? <><Loader2 size={16} className="spin" /> Uploading…</> : <><Upload size={16} /> {picked.length > 0 ? `${picked.length} Post Photos` : 'Post Photos'}</>}
           </button>
         </div>
       </div>

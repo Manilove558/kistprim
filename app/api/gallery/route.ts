@@ -3,22 +3,22 @@ import { getStore } from '@netlify/blobs'
 import type { GalleryImage, GalleryEdits } from '@/lib/gallery-data'
 import { verifyAdminToken, getTokenFromRequest } from '@/lib/admin-token'
 
-// Ye route hamesha dynamic rahe — static prerender mat karo
+// Always keep this route dynamic — no static prerender
 export const dynamic = 'force-dynamic'
 
-// Shared gallery storage — Netlify Blobs par taaki sab devices par same dikhe
-// localStorage sirf fallback hai (jab Blobs available nahi)
+// Shared gallery storage — Netlify Blobs so all devices show the same
+// localStorage is only a fallback (when Blobs is unavailable)
 
 function getGalleryStore() {
-  // Netlify Functions/Edge me siteID/token auto-set hote hain
-  // Local dev me ye throw karega -> fallback use hoga
+  // In Netlify Functions/Edge the siteID/token are auto-set
+  // In local dev this throws -> the fallback is used
   return getStore('solasta-gallery')
 }
 
 /**
- * Browser se aayi base64 photo ko alag blob file me daal kar
- * image ka src us blob ke /api/photo/... link se badal do.
- * (Lazy loading isi se kaam karta hai.)
+ * Store a base64 photo from the browser as a separate blob file and
+ * point the image src at that blob via its /api/photo/... link.
+ * (This is what makes lazy loading work.)
  */
 async function storeImageBlob(store: ReturnType<typeof getGalleryStore>, image: GalleryImage): Promise<GalleryImage> {
   if (!image.src.startsWith('data:')) return image
@@ -26,14 +26,14 @@ async function storeImageBlob(store: ReturnType<typeof getGalleryStore>, image: 
   if (!match) return image
   const mimeType = match[1]
   const base64 = match[2]
-  // ~6MB raw limit (base64 me ~8MB) — server-side safety check
-  if (base64.length > 8 * 1024 * 1024) throw new Error('Photo bahut badi hai (max 5MB)')
+  // ~6MB raw limit (~8MB in base64) — server-side safety check
+  if (base64.length > 8 * 1024 * 1024) throw new Error('Photo is too large (max 5MB)')
   const ext = mimeType.split('/')[1].replace('jpeg', 'jpg').split('+')[0] || 'jpg'
   const uniqueId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const blobKey = `photos/${uniqueId}.${ext}`
   const bytes = Buffer.from(base64, 'base64')
   const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
-  // Blob me type rakho taaki /api/photo sahi Content-Type de sake
+  // Keep the type in the blob so /api/photo can send the right Content-Type
   await store.set(blobKey, new Blob([ab], { type: mimeType }))
   return { ...image, src: `/api/photo/${blobKey}` }
 }
@@ -43,7 +43,7 @@ function cleanAlbumName(name: unknown): string {
   return name.trim().slice(0, 40)
 }
 
-/** Album ko albums.json me register karo (duplicate nahi), updated list wapas do. */
+/** Register an album in albums.json (no duplicates), return the updated list. */
 async function registerAlbum(store: ReturnType<typeof getGalleryStore>, name: string): Promise<string[]> {
   const albums = ((await store.get('albums.json', { type: 'json' }).catch(() => null)) || []) as string[]
   if (!albums.includes(name)) {
@@ -54,9 +54,9 @@ async function registerAlbum(store: ReturnType<typeof getGalleryStore>, name: st
 }
 
 /**
- * Kaun se albums me abhi photos hain — uploaded (custom.json) + bundled (edits.json).
- * (Delete hone par dono jagah se entry hat jati hai, isliye bachi hui entries
- * ka matlab hai photo abhi bhi gallery me dikh rahi hai.)
+ * Which albums still have photos — uploaded (custom.json) + bundled (edits.json).
+ * (A delete removes the entry from both places, so remaining entries
+ * mean the photo is still visible in the gallery.)
  */
 function getUsedAlbums(custom: GalleryImage[], edits: GalleryEdits): Set<string> {
   const used = new Set<string>()
@@ -72,7 +72,7 @@ function getUsedAlbums(custom: GalleryImage[], edits: GalleryEdits): Set<string>
 }
 
 /**
- * Jin albums (categories) me ab koi photo nahi bachi, unhe albums.json se hatao.
+ * Remove albums (categories) with no photos left from albums.json.
  */
 async function pruneEmptyAlbums(store: ReturnType<typeof getGalleryStore>): Promise<void> {
   const [custom, edits, albums] = await Promise.all([
@@ -97,8 +97,8 @@ export async function GET() {
       store.get('albums.json', { type: 'json' }).catch(() => null),
       store.get('likes.json', { type: 'json' }).catch(() => null),
     ])
-    // Pehle se khaali padi categories bhi saaf karo — taaki purani khaali
-    // category agli baar page khulne par khud hat jaye (delete ka wait na karna pade)
+    // Also clean up already-empty categories — so an old empty
+    // category removes itself the next time the page opens (no need to wait for a delete)
     const customList = (custom || []) as GalleryImage[]
     const editsObj = (edits || {}) as GalleryEdits
     let albumList = (albums || []) as string[]
@@ -116,20 +116,20 @@ export async function GET() {
       likes: likes || {},
     })
   } catch {
-    // Server down ho to client localStorage fallback use karega
+    // If the server is down, the client uses the localStorage fallback
     return NextResponse.json({ custom: [], deleted: [], edits: {}, albums: [], likes: {}, fallback: true })
   }
 }
 
 export async function POST(req: NextRequest) {
-  // 🔒 Sirf valid admin token wale add/edit/delete/album kar sakte hain
+  // 🔒 Only valid admin tokens can add/edit/delete/album
   if (!verifyAdminToken(getTokenFromRequest(req))) {
-    return NextResponse.json({ ok: false, error: 'Admin login zaroori hai' }, { status: 403 })
+    return NextResponse.json({ ok: false, error: 'Admin login required' }, { status: 403 })
   }
 
   const body = await req.json().catch(() => null)
   if (!body || typeof body.action !== 'string') {
-    return NextResponse.json({ ok: false, error: 'Galat request' }, { status: 400 })
+    return NextResponse.json({ ok: false, error: 'Invalid request' }, { status: 400 })
   }
 
   const store = getGalleryStore()
@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
       const target = custom.find((img) => img.src === body.src)
 
       if (target) {
-        // Uploaded photo: custom.json se hatao + blob file bhi hatao
+        // Uploaded photo: remove from custom.json + delete the blob file too
         if (target.src.startsWith('/api/photo/')) {
           const blobKey = decodeURIComponent(target.src.slice('/api/photo/'.length))
           if (blobKey.startsWith('photos/')) {
@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
         const next = custom.filter((img) => img.src !== body.src)
         await store.setJSON('custom.json', next)
       } else {
-        // Bundled photo (/photos/* repo me hai) — deleted.json hide-list me daalo
+        // Bundled photo (/photos/* lives in the repo) — add to the deleted.json hide-list
         const deleted = ((await store.get('deleted.json', { type: 'json' }).catch(() => null)) || []) as string[]
         if (!deleted.includes(body.src)) {
           deleted.push(body.src)
@@ -190,19 +190,19 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Is photo ke likes bhi saaf karo
+      // Also clear this photo's likes
       const likes = ((await store.get('likes.json', { type: 'json' }).catch(() => null)) || {}) as Record<string, number>
       if (likes[body.src] !== undefined) {
         delete likes[body.src]
         await store.setJSON('likes.json', likes)
       }
-      // Caption edits ki stale entry bhi hatao
+      // Also remove the stale caption-edit entry
       const edits = ((await store.get('edits.json', { type: 'json' }).catch(() => null)) || {}) as GalleryEdits
       if (edits[body.src]) {
         delete edits[body.src]
         await store.setJSON('edits.json', edits)
       }
-      // Jis category me ab koi photo nahi bachi, wo option hatao
+      // Remove the category option that has no photos left
       await pruneEmptyAlbums(store)
       const albums = ((await store.get('albums.json', { type: 'json' }).catch(() => null)) || []) as string[]
       return NextResponse.json({ ok: true, albums })
@@ -220,13 +220,13 @@ export async function POST(req: NextRequest) {
           : img,
       )
       await store.setJSON('custom.json', next)
-      // Caption edit edits.json me bhi save karo taaki sab devices par same dikhe
-      // (bundled photos ka album bhi yahin se lagta hai)
+      // Also save caption edits to edits.json so all devices show the same
+      // (bundled photos get their album from here too)
       const edits = ((await store.get('edits.json', { type: 'json' }).catch(() => null)) || {}) as GalleryEdits
       edits[body.src] = { title, detail, ...(body.album !== undefined ? { album } : {}) }
       await store.setJSON('edits.json', edits)
       if (album) await registerAlbum(store, album)
-      // Album hataya/badla ho to khaali category saaf karo
+      // If an album was removed/changed, clean up the empty category
       await pruneEmptyAlbums(store)
       const albums = ((await store.get('albums.json', { type: 'json' }).catch(() => null)) || []) as string[]
       return NextResponse.json({ ok: true, custom: next, albums })
@@ -235,7 +235,7 @@ export async function POST(req: NextRequest) {
     // ---------- ALBUM CREATE ----------
     if (body.action === 'album-create' && body.name) {
       const name = cleanAlbumName(body.name)
-      if (!name) return NextResponse.json({ ok: false, error: 'Album ka naam khaali hai' }, { status: 400 })
+      if (!name) return NextResponse.json({ ok: false, error: 'Album name is empty' }, { status: 400 })
       const albums = await registerAlbum(store, name)
       return NextResponse.json({ ok: true, albums })
     }

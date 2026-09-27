@@ -4,16 +4,16 @@ import { getStore } from '@netlify/blobs'
 export const dynamic = 'force-dynamic'
 
 /**
- * Photo par like / unlike — students bina login ke kar sakte hain.
- * Ek tap = +1, dobara tap = -1 (unlike). Count sabko dikhta hai.
- * (Ek device se ek photo par ek hi active like — browser localStorage me yaad rakhta hai.)
+ * Like / unlike a photo — students can do it without logging in.
+ * One tap = +1, tap again = -1 (unlike). The count is visible to everyone.
+ * (One active like per photo per device — remembered in browser localStorage.)
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null)
     const src = body?.src
     if (!src || typeof src !== 'string' || src.length > 500) {
-      return NextResponse.json({ ok: false, error: 'Galat request' }, { status: 400 })
+      return NextResponse.json({ ok: false, error: 'Invalid request' }, { status: 400 })
     }
     const store = getStore('solasta-gallery')
     const likes = ((await store.get('likes.json', { type: 'json' }).catch(() => null)) || {}) as Record<string, number>
@@ -25,6 +25,6 @@ export async function POST(req: Request) {
     await store.setJSON('likes.json', likes)
     return NextResponse.json({ ok: true, likes: likes[src] })
   } catch {
-    return NextResponse.json({ ok: false, error: 'Like save nahi ho paya' }, { status: 500 })
+    return NextResponse.json({ ok: false, error: 'Could not save the like' }, { status: 500 })
   }
 }

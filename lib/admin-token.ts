@@ -1,18 +1,18 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 import { ADMIN_EMAIL } from './admin-auth'
 
-// SERVER ONLY — is file ko kabhi client component me import mat karna
-// (crypto Node ka module hai, browser me nahi chalega)
+// SERVER ONLY — never import this file in a client component
+// (crypto is a Node module, it will not run in the browser)
 
-const TOKEN_EXPIRY_MS = 12 * 60 * 60 * 1000 // 12 ghante
+const TOKEN_EXPIRY_MS = 12 * 60 * 60 * 1000 // 12 hours
 
 function getSecret(): string {
   const s = process.env.ADMIN_SECRET
   if (!s) {
     if (process.env.NODE_ENV === 'production') {
-      throw new Error('ADMIN_SECRET env var set nahi hai — Netlify me add karo')
+      throw new Error('ADMIN_SECRET env var is not set — add it in Netlify')
     }
-    console.warn('[admin-token] ADMIN_SECRET nahi hai — sirf local dev ke liye insecure secret use ho raha hai')
+    console.warn('[admin-token] ADMIN_SECRET missing — using an insecure secret for local dev only')
     return 'dev-only-insecure-secret'
   }
   return s

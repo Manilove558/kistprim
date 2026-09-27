@@ -12,8 +12,8 @@ type Props = {
   onSuccess: () => void
 }
 
-// OTP server par banta aur verify hota hai — browser me kabhi nahi.
-// Isliye localStorage me OTP daal kar admin banne ka bypass ab kaam nahi karega.
+// The OTP is generated and verified on the server — never in the browser.
+// So bypassing admin via a localStorage OTP no longer works.
 export default function AdminLogin({ onClose, onSuccess }: Props) {
   const [step, setStep] = useState<1 | 2>(1)
   const [email, setEmail] = useState('')
@@ -27,7 +27,7 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
     setError('')
     setInfo('')
     if (!isValidAdminEmail(email)) {
-      setError('Sirf admin email se login ho sakta hai.')
+      setError('Only the admin email can log in.')
       return
     }
     setLoading(true)
@@ -39,19 +39,19 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || 'OTP bhejne me problem hui')
+        setError(data.error || 'Could not send the OTP')
         return
       }
       setStep(2)
       if (data.sent) {
-        setInfo('OTP bhej diya gaya hai. 5 minute me daalein.')
+        setInfo('OTP sent. Please enter it within 5 minutes.')
       } else {
-        // Dev mode — jab tak email service configure nahi hai
+        // Dev mode — until the email service is configured
         setDevOtp(data.devPreviewOtp || '')
-        setInfo('Email service abhi configure nahi hai, isliye OTP yahin dikh raha hai (testing ke liye).')
+        setInfo('Email service is not configured yet, so the OTP is shown here (for testing).')
       }
     } catch {
-      setError('Network error — phir try karein')
+      setError('Network error — please try again')
     } finally {
       setLoading(false)
     }
@@ -60,7 +60,7 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
   const doVerify = async () => {
     setError('')
     if (otp.trim().length !== 6) {
-      setError('6-digit OTP daalein')
+      setError('Enter the 6-digit OTP')
       return
     }
     setLoading(true)
@@ -72,14 +72,14 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
       })
       const data = await res.json()
       if (!res.ok || !data.token) {
-        setError(data.error || 'OTP verify nahi ho paya')
+        setError(data.error || 'Could not verify the OTP')
         return
       }
-      // Server se mila signed token save karo — isi se gallery actions honge
+      // Save the signed token from the server — gallery actions use it
       saveAdminToken(data.token)
       onSuccess()
     } catch {
-      setError('Network error — phir try karein')
+      setError('Network error — please try again')
     } finally {
       setLoading(false)
     }
@@ -88,12 +88,12 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
   return (
     <div className="admin-overlay" onClick={onClose}>
       <div className="admin-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Admin login">
-        <button className="admin-close" onClick={onClose} aria-label="Band karein"><X size={18} /></button>
+        <button className="admin-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
 
         <div className="admin-head">
           <span className="admin-icon"><ShieldCheck size={22} /></span>
           <h3>Admin Login</h3>
-          <p>Sirf admin hi photos post kar sakta hai.</p>
+          <p>Only the admin can post photos.</p>
         </div>
 
         {step === 1 ? (
@@ -103,7 +103,7 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
               <Mail size={16} />
               <input
                 type="email"
-                placeholder="Admin email likhein"
+                placeholder="Enter admin email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="admin-input"
@@ -112,9 +112,9 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
             {error && <p className="admin-error">{error}</p>}
             {info && <p className="admin-info">{info}</p>}
             <button className="admin-btn" onClick={sendOtp} disabled={loading}>
-              {loading ? <><Loader2 size={16} className="spin" /> OTP bhej rahe hain…</> : 'OTP bhejein'}
+              {loading ? <><Loader2 size={16} className="spin" /> Sending OTP…</> : 'Send OTP'}
             </button>
-            <p className="admin-hint">OTP aapke email par jayega.</p>
+            <p className="admin-hint">The OTP will be sent to your email.</p>
           </div>
         ) : (
           <div className="admin-body">
@@ -134,10 +134,10 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
             {error && <p className="admin-error">{error}</p>}
             {info && <p className="admin-info">{info}</p>}
             <button className="admin-btn" onClick={doVerify} disabled={loading}>
-              {loading ? <><Loader2 size={16} className="spin" /> Verify ho raha…</> : 'Verify & Login'}
+              {loading ? <><Loader2 size={16} className="spin" /> Verifying…</> : 'Verify & Log In'}
             </button>
             <button className="admin-link" onClick={() => { setStep(1); setError(''); setInfo('') }}>
-              Email badlein / OTP dobara bhejein
+              Change email / resend OTP
             </button>
           </div>
         )}

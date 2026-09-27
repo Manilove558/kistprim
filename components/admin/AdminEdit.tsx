@@ -22,13 +22,13 @@ export default function AdminEdit({ photoSrc, initialTitle, initialDetail, initi
 
   const handleSave = async () => {
     setError('')
-    if (!title.trim()) { setError('Title khaali nahi ho sakta'); return }
+    if (!title.trim()) { setError('Title cannot be empty'); return }
     setLoading(true)
     try {
       await onSave(title.trim(), detail.trim(), album.trim())
       onClose()
     } catch {
-      setError('Save nahi ho paya, dobara try karein')
+      setError('Could not save — please try again')
     } finally {
       setLoading(false)
     }
@@ -36,12 +36,12 @@ export default function AdminEdit({ photoSrc, initialTitle, initialDetail, initi
 
   return (
     <div className="admin-overlay" onClick={onClose}>
-      <div className="admin-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Caption edit karein">
-        <button className="admin-close" onClick={onClose} aria-label="Band karein"><X size={18} /></button>
+      <div className="admin-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Edit caption">
+        <button className="admin-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
         <div className="admin-head">
           <span className="admin-icon"><Pencil size={22} /></span>
-          <h3>Caption Edit karein</h3>
-          <p>Title, detail aur album badal sakte ho</p>
+          <h3>Edit Caption</h3>
+          <p>You can change the title, detail and album</p>
         </div>
         <div className="admin-body">
           <img src={photoSrc} alt="" className="admin-edit-thumb" />
@@ -52,7 +52,7 @@ export default function AdminEdit({ photoSrc, initialTitle, initialDetail, initi
             onChange={(e) => setTitle(e.target.value)}
             className="admin-input"
             maxLength={80}
-            placeholder="Photo ka title"
+            placeholder="Photo title"
           />
 
           <label className="admin-label">Detail</label>
@@ -62,16 +62,16 @@ export default function AdminEdit({ photoSrc, initialTitle, initialDetail, initi
             className="admin-textarea"
             rows={4}
             maxLength={500}
-            placeholder="Photo ke baare me likhein"
+            placeholder="Write about the photo"
           />
 
-          <label className="admin-label">Album (khaali = koi album nahi)</label>
+          <label className="admin-label">Album (empty = no album)</label>
           <input
             value={album}
             onChange={(e) => setAlbum(e.target.value)}
             className="admin-input"
             maxLength={40}
-            placeholder="Album ka naam"
+            placeholder="Album name"
             list="album-options-edit"
           />
           <datalist id="album-options-edit">
@@ -80,7 +80,7 @@ export default function AdminEdit({ photoSrc, initialTitle, initialDetail, initi
 
           {error && <p className="admin-error">{error}</p>}
           <button className="admin-btn" onClick={handleSave} disabled={loading}>
-            {loading ? <><Loader2 size={16} className="spin" /> Save ho raha…</> : 'Save karein'}
+            {loading ? <><Loader2 size={16} className="spin" /> Saving…</> : 'Save'}
           </button>
         </div>
       </div>

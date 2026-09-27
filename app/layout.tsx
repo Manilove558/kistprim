@@ -80,10 +80,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Yeh chhota script body render hone SE PEHLE chalta hai, taaki page load
-            hote hi "flash" na ho (galat theme ek second dikh kar phir badal jaye).
-            Pehle localStorage me saved choice dekhta hai; nahi mile to system
-            (phone/laptop) ka prefers-color-scheme use karta hai. */}
+        {/* This small script runs BEFORE the body renders, so there is no
+            "flash" on page load (wrong theme showing for a second, then switching).
+            It first checks the saved choice in localStorage; if none, it uses the system
+            (phone/laptop) prefers-color-scheme. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`,

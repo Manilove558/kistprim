@@ -1,6 +1,6 @@
-// Admin auth — CLIENT-SAFE helpers (browser me chalte hain)
-// Asli OTP verification aur token signing SERVER par hoti hai (lib/admin-token.ts).
-// Yahan sirf token ko save / check karne ke helpers hain — koi secret yahan nahi.
+// Admin auth — CLIENT-SAFE helpers (they run in the browser)
+// Real OTP verification and token signing happen on the SERVER (lib/admin-token.ts).
+// Only helpers to save / check the token here — no secrets.
 
 export const ADMIN_EMAIL = 'backc6915@gmail.com'
 
@@ -9,7 +9,7 @@ const TOKEN_KEY = 'kist_admin_token'
 export function saveAdminToken(token: string) {
   try {
     localStorage.setItem(TOKEN_KEY, token)
-    // Purane client-side session keys saaf karo (ab kaam ke nahi)
+    // Clear old client-side session keys (no longer used)
     localStorage.removeItem('kist_admin_session')
     localStorage.removeItem('kist_admin_otp')
   } catch {}
@@ -32,7 +32,7 @@ export function clearAdminSession() {
   } catch {}
 }
 
-// Token ke payload ko decode karo (signature verify nahi — wo server karta hai)
+// Decode the token payload (no signature verification — the server does that)
 function parseTokenPayload(token: string): { email?: string; exp?: number } | null {
   try {
     const payload = token.split('.')[0]
@@ -48,7 +48,7 @@ function parseTokenPayload(token: string): { email?: string; exp?: number } | nu
   }
 }
 
-// Admin logged in hai? (token maujood + expire nahi hua + email sahi)
+// Is the admin logged in? (token present + not expired + email correct)
 export function isAdminLoggedIn(): boolean {
   const token = getAdminToken()
   if (!token) return false

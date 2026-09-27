@@ -22,8 +22,8 @@ const LIKED_STORE_KEY = 'kist_liked'
 const DELETED_STORE_KEY = 'kist_deleted_gallery'
 const EDITS_STORE_KEY = 'kist_edits_gallery'
 
-// Server (Netlify Blobs) se gallery lao — sab devices par same dikhega
-// Agar server fail ho to localStorage fallback
+// Load the gallery from the server (Netlify Blobs) — same on all devices
+// localStorage fallback if the server fails
 async function loadGalleryFromServer(): Promise<{ custom: GalleryImage[]; deleted: string[]; edits: GalleryEdits; albums: string[]; likes: Record<string, number>; useFallback: boolean }> {
   try {
     const res = await fetch('/api/gallery', { cache: 'no-store' })
@@ -49,7 +49,7 @@ async function loadGalleryFromServer(): Promise<{ custom: GalleryImage[]; delete
 
 function buildGallery(custom: GalleryImage[], deleted: string[], edits: GalleryEdits): GalleryImage[] {
   const deletedSet = new Set(deleted)
-  // Admin ke caption edits lagao (custom + purani photos dono par)
+  // Apply the admin's caption edits (to custom + bundled photos)
   const applyEdits = (img: GalleryImage): GalleryImage => {
     const e = edits[img.src]
     if (!e) return img
@@ -97,17 +97,17 @@ export default function Page() {
   })
   const [activeAlbum, setActiveAlbum] = useState<string | null>(null)
   const [backingUp, setBackingUp] = useState(false)
-  // Pehle render server jaisa khaali rakho (hydration mismatch na ho),
-  // localStorage se likes page khulne KE BAAD load karo
+  // Keep the first render empty like the server (avoid hydration mismatch),
+  // load likes from localStorage only AFTER the page opens
   const [likedSrcs, setLikedSrcs] = useState<string[]>([])
 
   useEffect(() => {
     const current = document.documentElement.getAttribute('data-theme')
     if (current === 'light' || current === 'dark') setTheme(current)
     setIsAdmin(isAdminLoggedIn())
-    // Is device par pehle like ki hui photos — hydration ke baad load karo
+    // Photos liked earlier on this device — load after hydration
     try { setLikedSrcs(JSON.parse(localStorage.getItem(LIKED_STORE_KEY) || '[]') as string[]) } catch {}
-    // Server se gallery load karo
+    // Load the gallery from the server
     loadGalleryFromServer().then(({ custom, deleted, edits, albums, likes, useFallback }) => {
       setGalleryMeta({ custom, deleted, edits, albums, likes, useFallback })
       setGalleryImages(buildGallery(custom, deleted, edits))
@@ -130,13 +130,13 @@ export default function Page() {
     journal: 'Get in touch',
   })
 
-  // Album filter: chuna hua album ho to sirf uski photos dikhao
+  // Album filter: show only photos of the selected album
   const visibleImages = useMemo(() => {
     if (!activeAlbum) return galleryImages
     return galleryImages.filter((img) => img.album === activeAlbum)
   }, [galleryImages, activeAlbum])
 
-  // Albums list: server wali + photos par lagi hui (koi chhoot na jaye)
+  // Album list: from the server + ones set on photos (don't miss any)
   const allAlbums = useMemo(() => {
     const set = new Set(galleryMeta.albums)
     for (const img of galleryImages) {
@@ -148,15 +148,15 @@ export default function Page() {
 
   const activeImage = activeIndex === null ? null : visibleImages[activeIndex]
 
-  // Lightbox (fullscreen) me phone par left/right swipe se photo badlo
+  // In the lightbox (fullscreen), swipe left/right on phones to change photo
   const lightboxTouchRef = useRef<{ x: number; y: number } | null>(null)
   const lightboxSwipedRef = useRef(false)
 
-  // Lightbox caption scroll — text upar jaye to image par fade ho
+  // Lightbox caption scroll — fade the image when text scrolls up
   const captionTextRef = useRef<HTMLElement | null>(null)
   const [captionFaded, setCaptionFaded] = useState(false)
 
-  // Dusri photo khulne par caption scroll reset karo
+  // Reset caption scroll when another photo opens
   useEffect(() => {
     setCaptionFaded(false)
     if (captionTextRef.current) captionTextRef.current.scrollTop = 0
@@ -193,10 +193,10 @@ export default function Page() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Admin ne kayi photos ek saath post ki (bulk upload) — pehle UI me, phir server par.
-  // Server par save hua ya nahi, true/false me batata hai.
+  // Admin posted several photos at once (bulk upload) — UI first, then server.
+  // Returns true/false depending on whether the server save worked.
   const handleAddMany = async (images: GalleryImage[]): Promise<boolean> => {
-    // Pehle UI me turant dikhao
+    // Show in the UI immediately
     const newCustom = [...images, ...galleryMeta.custom]
     const newAlbums = [...galleryMeta.albums]
     for (const img of images) {
@@ -208,7 +208,7 @@ export default function Page() {
     setGalleryImages(buildGallery(newCustom, newMeta.deleted, newMeta.edits))
     if (newMeta.useFallback) saveLocalFallback(newCustom, newMeta.deleted, newMeta.edits)
 
-    // Phir server par save karo taaki sab devices par dikhe
+    // Then save to the server so all devices see it
     try {
       const res = await fetch('/api/gallery', {
         method: 'POST',
@@ -217,7 +217,7 @@ export default function Page() {
       })
       if (res.status === 403) {
         handleLogout()
-        alert('Admin session expire ho gaya — dobara login karein')
+        alert('Admin session expired — please log in again')
         return false
       }
       if (res.ok) {
@@ -240,12 +240,12 @@ export default function Page() {
     }
   }
 
-  // Admin ne caption edit kiya — pehle UI me, phir server par save karo
+  // Admin edited a caption — UI first, then save to the server
   const handleEditSave = async (title: string, detail: string, album: string) => {
     if (!editTarget) return
     const src = editTarget.image.src
     const newEdits: GalleryEdits = { ...galleryMeta.edits, [src]: { title, detail, album } }
-    // Uploaded photos ka title/album custom me bhi update karo (optimistic)
+    // Also update title/album of uploaded photos in custom (optimistic)
     const newCustom = galleryMeta.custom.map((c) =>
       c.src === src ? { ...c, title, detail, album: album || undefined } : c,
     )
@@ -265,7 +265,7 @@ export default function Page() {
       })
       if (res.status === 403) {
         handleLogout()
-        alert('Admin session expire ho gaya — dobara login karein')
+        alert('Admin session expired — please log in again')
         return
       }
       if (res.ok) {
@@ -286,16 +286,16 @@ export default function Page() {
 
   const handleDelete = async (src: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!confirm('Ye photo delete karein?')) return
+    if (!confirm('Delete this photo?')) return
     const target = galleryImages.find((g) => g.src === src)
     if (!target) return
 
-    // UI se turant hatao — agar server par fail hua to neeche wapas layenge
+    // Remove from the UI immediately — restore below if the server fails
     const prevMeta = galleryMeta
     const prevImages = galleryImages
     const newCustom = galleryMeta.custom.filter((c) => c.src !== target.src)
-    // Sirf purani bundled photos (/photos/...) deleted list me jati hain;
-    // uploaded photos (data: ya /api/photo/) server se hi delete hoti hain
+    // Only old bundled photos (/photos/...) go to the deleted list;
+    // uploaded photos (data: or /api/photo/) are deleted from the server itself
     const newDeleted = target.src.startsWith('/photos/')
       ? [...galleryMeta.deleted, target.src]
       : galleryMeta.deleted
@@ -305,7 +305,7 @@ export default function Page() {
     if (newMeta.useFallback) saveLocalFallback(newCustom, newDeleted, newMeta.edits)
     if (activeIndex !== null) setActiveIndex(null)
 
-    // Server par bhi delete karo
+    // Also delete on the server
     try {
       const res = await fetch('/api/gallery', {
         method: 'POST',
@@ -314,7 +314,7 @@ export default function Page() {
       })
       if (res.status === 403) {
         handleLogout()
-        alert('Admin session expire ho gaya — dobara login karein')
+        alert('Admin session expired — please log in again')
         return
       }
       if (!res.ok) throw new Error('server delete fail')
@@ -323,14 +323,14 @@ export default function Page() {
       setGalleryMeta(serverMeta)
       setGalleryImages(buildGallery(serverMeta.custom, serverMeta.deleted, serverMeta.edits))
     } catch {
-      // Server par delete nahi hua — photo wapas lao taaki "wapas aa gayi" ka confusion na ho
+      // Server delete failed — bring the photo back to avoid "it came back" confusion
       setGalleryMeta(prevMeta)
       setGalleryImages(prevImages)
-      alert('Photo delete nahi ho payi — phir try karein')
+      alert('Could not delete the photo — please try again')
     }
   }
 
-  // Student ne photo like/unlike ki — bina login ke; dobara dabane par like hat jata hai
+  // A student liked/unliked a photo — no login; tapping again removes the like
   const handleLike = async (src: string, e: React.MouseEvent) => {
     e.stopPropagation()
     const isLiked = likedSrcs.includes(src)
@@ -343,7 +343,7 @@ export default function Page() {
         ...prev,
         likes: { ...prev.likes, [src]: Math.max(0, (prev.likes[src] || 0) + (isLiked ? -1 : 1)) },
       }))
-      // Phir server par save karo
+      // Then save to the server
       const res = await fetch('/api/like', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -356,7 +356,7 @@ export default function Page() {
     } catch {}
   }
 
-  // Admin: saari uploaded photos ka ZIP backup download karo
+  // Admin: download a ZIP backup of all uploaded photos
   const handleBackup = async () => {
     if (backingUp) return
     setBackingUp(true)
@@ -364,7 +364,7 @@ export default function Page() {
       const res = await fetch('/api/backup', { headers: { ...authHeaders() } })
       if (res.status === 403) {
         handleLogout()
-        alert('Admin session expire ho gaya — dobara login karein')
+        alert('Admin session expired — please log in again')
         return
       }
       if (!res.ok) throw new Error('backup fail')
@@ -378,7 +378,7 @@ export default function Page() {
       a.remove()
       URL.revokeObjectURL(url)
     } catch {
-      alert('Backup download nahi ho paya — phir try karein')
+      alert('Could not download the backup — please try again')
     } finally {
       setBackingUp(false)
     }
@@ -448,7 +448,7 @@ export default function Page() {
           </div>
           {isAdmin && (
             <button className="hero-post-btn" onClick={() => setShowUpload(true)}>
-              <Plus size={16} /> Nayi Photo Post karein
+              <Plus size={16} /> Post New Photo
             </button>
           )}
         </div>
@@ -461,9 +461,9 @@ export default function Page() {
             <p>Every frame from the night, in order.</p>
             {isAdmin && (
               <p className="admin-note">
-                Admin mode: photos par edit/delete button dikhega.
-                <button className="backup-btn" onClick={handleBackup} disabled={backingUp} title="Saari photos ka backup download karein">
-                  <Download size={13} /> {backingUp ? 'Backup ban raha…' : 'Backup download'}
+                Admin mode: edit/delete buttons are shown on photos.
+                <button className="backup-btn" onClick={handleBackup} disabled={backingUp} title="Download a backup of all photos">
+                  <Download size={13} /> {backingUp ? 'Preparing backup…' : 'Backup download'}
                 </button>
               </p>
             )}
@@ -477,7 +477,7 @@ export default function Page() {
                 role="tab"
                 aria-selected={!activeAlbum}
               >
-                Sab
+                All
               </button>
               {allAlbums.map((a) => (
                 <button
@@ -518,7 +518,7 @@ export default function Page() {
                 <button
                   className={`like-btn${likedSrcs.includes(image.src) ? ' liked' : ''}`}
                   onClick={(e) => handleLike(image.src, e)}
-                  aria-label="Photo like karein"
+                  aria-label="Like this photo"
                   title="Like"
                 >
                   <Heart size={14} fill={likedSrcs.includes(image.src) ? 'currentColor' : 'none'} />
@@ -531,7 +531,7 @@ export default function Page() {
                     <button
                       className="edit-btn"
                       onClick={(e) => { e.stopPropagation(); setEditTarget({ image }) }}
-                      aria-label="Caption edit karein"
+                      aria-label="Edit caption"
                       title="Edit caption"
                     >
                       <Pencil size={14} />
@@ -553,8 +553,6 @@ export default function Page() {
 
         <footer className="gallery-footer">
           <span>{copy.footerHint}</span>
-          <p className="dev-credit">Developed by M'D Umar Farok</p>
-
          <a
             className="journal-link"
             href="https://www.instagram.com/reel/DdYwxvXgfjW/?stkn=MXhpMW9jNjVubmVocg=="
@@ -574,7 +572,7 @@ export default function Page() {
           aria-modal="true"
           aria-label={`${activeImage.title} fullscreen view`}
           onClick={() => {
-            // Swipe ke baad aane wali click ko ignore karo — lightbox band nahi hona chahiye
+            // Ignore the click that follows a swipe — the lightbox must not close
             if (lightboxSwipedRef.current) { lightboxSwipedRef.current = false; return }
             setActiveIndex(null)
           }}
@@ -589,10 +587,10 @@ export default function Page() {
             const t = event.changedTouches[0]
             const dx = t.clientX - start.x
             const dy = t.clientY - start.y
-            // 50px se kam ya vertical swipe — ignore karo (caption ka vertical scroll chalta rahe)
+            // Under 50px or a vertical swipe — ignore (keep caption vertical scroll working)
             if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return
             lightboxSwipedRef.current = true
-            const dir = dx < 0 ? 1 : -1 // left swipe = agli photo, right swipe = pichhli photo
+            const dir = dx < 0 ? 1 : -1 // left swipe = next photo, right swipe = previous photo
             setActiveIndex((activeIndex + dir + visibleImages.length) % visibleImages.length)
           }}
         >
@@ -618,7 +616,7 @@ export default function Page() {
                 <button
                   className={`lightbox-like${likedSrcs.includes(activeImage.src) ? ' liked' : ''}`}
                   onClick={(event) => handleLike(activeImage.src, event)}
-                  aria-label="Photo like karein"
+                  aria-label="Like this photo"
                   title="Like"
                 >
                   <Heart size={16} fill={likedSrcs.includes(activeImage.src) ? 'currentColor' : 'none'} />
@@ -681,10 +679,10 @@ export default function Page() {
             className="admin-modal"
             role="dialog"
             aria-modal="true"
-            aria-label="College ki jaankari"
+            aria-label="About the college"
             onClick={(e) => e.stopPropagation()}
           >
-            <button className="admin-close" onClick={() => setShowCollegeInfo(false)} aria-label="Band karein">
+            <button className="admin-close" onClick={() => setShowCollegeInfo(false)} aria-label="Close">
               <X size={16} />
             </button>
             <div className="admin-head">
@@ -697,11 +695,11 @@ export default function Page() {
             <div className="college-facts">
               <p><strong>Private</strong> engineering college — established <strong>2001</strong></p>
               <p>Jatni, Bhubaneswar (Odisha)</p>
-              <p>Biju Patnaik University of Technology (BPUT) se affiliated · AICTE approved</p>
+              <p>Affiliated to Biju Patnaik University of Technology (BPUT) · AICTE approved</p>
               <p>Courses: B.Tech, M.Tech, MBA</p>
             </div>
             <a className="admin-btn" href="https://www.kist.ac.in" target="_blank" rel="noreferrer">
-              College website kholo
+              Open college website
             </a>
           </div>
         </div>

@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
  */
 export async function GET(req: NextRequest) {
   if (!verifyAdminToken(getTokenFromRequest(req))) {
-    return NextResponse.json({ ok: false, error: 'Admin login zaroori hai' }, { status: 403 })
+    return NextResponse.json({ ok: false, error: 'Admin login required' }, { status: 403 })
   }
 
   try {
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Backup nahi ban paya'
+    const message = err instanceof Error ? err.message : 'Could not create the backup'
     return NextResponse.json({ ok: false, error: message }, { status: 500 })
   }
 }
