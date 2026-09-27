@@ -480,6 +480,7 @@ button.nav-mark {
 .close-lightbox, .lightbox-arrow {
   /* Close (X) button aur left/right arrow buttons ka common style */
   position: absolute;
+  z-index: 2; /* mobile par lightbox-content ke UPAR rahe — previous/back arrow tap ho sake */
   display: grid;
   place-items: center;
   border: none;

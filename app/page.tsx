@@ -146,6 +146,10 @@ export default function Page() {
 
   const activeImage = activeIndex === null ? null : visibleImages[activeIndex]
 
+  // Lightbox (fullscreen) me phone par left/right swipe se photo badlo
+  const lightboxTouchRef = useRef<{ x: number; y: number } | null>(null)
+  const lightboxSwipedRef = useRef(false)
+
   // Lightbox caption scroll — text upar jaye to image par fade ho
   const captionTextRef = useRef<HTMLElement | null>(null)
   const [captionFaded, setCaptionFaded] = useState(false)
@@ -567,7 +571,28 @@ export default function Page() {
           role="dialog"
           aria-modal="true"
           aria-label={`${activeImage.title} fullscreen view`}
-          onClick={() => setActiveIndex(null)}
+          onClick={() => {
+            // Swipe ke baad aane wali click ko ignore karo — lightbox band nahi hona chahiye
+            if (lightboxSwipedRef.current) { lightboxSwipedRef.current = false; return }
+            setActiveIndex(null)
+          }}
+          onTouchStart={(event) => {
+            const t = event.touches[0]
+            lightboxTouchRef.current = { x: t.clientX, y: t.clientY }
+          }}
+          onTouchEnd={(event) => {
+            const start = lightboxTouchRef.current
+            lightboxTouchRef.current = null
+            if (!start || activeIndex === null) return
+            const t = event.changedTouches[0]
+            const dx = t.clientX - start.x
+            const dy = t.clientY - start.y
+            // 50px se kam ya vertical swipe — ignore karo (caption ka vertical scroll chalta rahe)
+            if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return
+            lightboxSwipedRef.current = true
+            const dir = dx < 0 ? 1 : -1 // left swipe = agli photo, right swipe = pichhli photo
+            setActiveIndex((activeIndex + dir + visibleImages.length) % visibleImages.length)
+          }}
         >
           <button className="close-lightbox" onClick={() => setActiveIndex(null)} aria-label="Close fullscreen image">
             <X size={20} />
@@ -582,7 +607,7 @@ export default function Page() {
           >
             <ChevronLeft size={22} />
           </button>
-          <div className="lightbox-content" onClick={(event) => event.stopPropagation()}>
+          <div className="lightbox-content" onClick={(event) => { lightboxSwipedRef.current = false; event.stopPropagation() }}>
             <img className="lightbox-image" src={activeImage.src} alt={activeImage.alt} />
             <div className="lightbox-caption">
               <div className="lightbox-caption-head">
