@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { X, Mail, ShieldCheck, Loader2 } from 'lucide-react'
 import {
-  ADMIN_EMAIL,
   saveAdminToken,
   isValidAdminEmail,
 } from '@/lib/admin-auth'
@@ -28,7 +27,7 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
     setError('')
     setInfo('')
     if (!isValidAdminEmail(email)) {
-      setError(`Sirf admin email (${ADMIN_EMAIL}) se login ho sakta hai.`)
+      setError('Sirf admin email se login ho sakta hai.')
       return
     }
     setLoading(true)
@@ -45,7 +44,7 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
       }
       setStep(2)
       if (data.sent) {
-        setInfo(`${ADMIN_EMAIL} par OTP bhej diya gaya hai. 5 minute me daalein.`)
+        setInfo('OTP bhej diya gaya hai. 5 minute me daalein.')
       } else {
         // Dev mode — jab tak email service configure nahi hai
         setDevOtp(data.devPreviewOtp || '')
@@ -104,7 +103,7 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
               <Mail size={16} />
               <input
                 type="email"
-                placeholder={ADMIN_EMAIL}
+                placeholder="Admin email likhein"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="admin-input"
@@ -115,7 +114,7 @@ export default function AdminLogin({ onClose, onSuccess }: Props) {
             <button className="admin-btn" onClick={sendOtp} disabled={loading}>
               {loading ? <><Loader2 size={16} className="spin" /> OTP bhej rahe hain…</> : 'OTP bhejein'}
             </button>
-            <p className="admin-hint">OTP <b>{ADMIN_EMAIL}</b> par jayega.</p>
+            <p className="admin-hint">OTP aapke email par jayega.</p>
           </div>
         ) : (
           <div className="admin-body">

@@ -97,14 +97,16 @@ export default function Page() {
   })
   const [activeAlbum, setActiveAlbum] = useState<string | null>(null)
   const [backingUp, setBackingUp] = useState(false)
-  const [likedSrcs, setLikedSrcs] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(LIKED_STORE_KEY) || '[]') as string[] } catch { return [] }
-  })
+  // Pehle render server jaisa khaali rakho (hydration mismatch na ho),
+  // localStorage se likes page khulne KE BAAD load karo
+  const [likedSrcs, setLikedSrcs] = useState<string[]>([])
 
   useEffect(() => {
     const current = document.documentElement.getAttribute('data-theme')
     if (current === 'light' || current === 'dark') setTheme(current)
     setIsAdmin(isAdminLoggedIn())
+    // Is device par pehle like ki hui photos — hydration ke baad load karo
+    try { setLikedSrcs(JSON.parse(localStorage.getItem(LIKED_STORE_KEY) || '[]') as string[]) } catch {}
     // Server se gallery load karo
     loadGalleryFromServer().then(({ custom, deleted, edits, albums, likes, useFallback }) => {
       setGalleryMeta({ custom, deleted, edits, albums, likes, useFallback })

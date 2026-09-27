@@ -78,7 +78,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Yeh chhota script body render hone SE PEHLE chalta hai, taaki page load
             hote hi "flash" na ho (galat theme ek second dikh kar phir badal jaye).
