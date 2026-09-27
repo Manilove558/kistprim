@@ -122,7 +122,7 @@ export default function Page() {
     eyebrow: 'Konark Institute Of Science And Technology',
     title: 'SOLASTA',
     headerCopy: 'The freshers party of Batch 26 —\ncaptured in a single night.',
-    date: '03 October 2026',
+    date: '19 September 2026',
     footerHint: 'Thank you for celebrating with us.',
     journal: 'Get in touch',
   })
