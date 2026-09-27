@@ -256,27 +256,19 @@ export default function Page() {
         <div className="nav-right">
           {isAdmin ? (
             <>
-              <button className="admin-nav-btn" onClick={() => setShowUpload(true)}>
-                <Plus size={14} /> Photo Post
+              <button className="admin-nav-btn" onClick={() => setShowUpload(true)} title="Photo Post">
+                <Plus size={14} /> <span className="admin-nav-btn-label">Photo Post</span>
               </button>
               <button className="admin-nav-btn ghost" onClick={handleLogout} title="Logout">
-                <LogOut size={14} /> Logout
+                <LogOut size={14} /> <span className="admin-nav-btn-label">Logout</span>
               </button>
               <span className="admin-badge"><ShieldCheck size={12} /> Admin</span>
             </>
           ) : (
             <button className="admin-nav-btn ghost" onClick={() => setShowLogin(true)}>
-              <ShieldCheck size={14} /> Admin Login
+              <ShieldCheck size={14} /> <span className="admin-nav-btn-label">Admin Login</span>
             </button>
           )}
-          <a
-            className="nav-link"
-            href="https://www.instagram.com/reel/DdYwxvXgfjW/?stkn=MXhpMW9jNjVubmVocg=="
-            target="_blank"
-            rel="noreferrer"
-          >
-            {copy.journal}
-          </a>
           <button
             className="theme-toggle"
             onClick={toggleTheme}

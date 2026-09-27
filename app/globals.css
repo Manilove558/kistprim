@@ -93,7 +93,7 @@ a { color: inherit; }
 img { max-width: 100%; }
 
 /* ---------------------------------------------------------------- */
-/* Nav (sabse upar wala sticky bar: logo/KIST + "Get in touch")      */
+/* Nav (sabse upar wala sticky bar: logo/KIST + admin buttons)     */
 /* Look: "Liquid Glass" (Apple ka naya iOS/visionOS glass style) —   */
 /*   position/layout pehle jaisa hi hai (full-width, sticky top),    */
 /*   sirf visual treatment change hui hai: strong blur + saturation  */
@@ -154,20 +154,8 @@ img { max-width: 100%; }
   height: 22px;            /* width jitni hi rakhna (square rehta hai) */
   object-fit: contain;
 }
-.nav-link {
-  /* Right side wala "Get in touch" link */
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--text);
-  text-decoration: none;
-  opacity: 0.88;
-  transition: opacity 0.2s ease;
-}
-.nav-link:hover, .nav-link:focus-visible { opacity: 1; }
-.nav-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
-
 .nav-right {
-  /* Right side ka group: theme toggle button + "Get in touch" link */
+  /* Right side ka group: admin buttons + theme toggle button */
   display: flex;
   align-items: center;
   gap: 14px;
@@ -492,7 +480,13 @@ img { max-width: 100%; }
 
 /* Mobile size (640px se choti screens) */
 @media (max-width: 640px) {
-  .site-nav { height: 44px; }
+  .site-nav { height: auto; min-height: 44px; padding-top: 6px; padding-bottom: 6px; }
+  .nav-right { gap: 8px; }
+  /* Phone par admin nav buttons icon-only dikhenge — text hide karo
+     taaki Photo Post + Logout + Admin badge + toggle sab ek line me fit ho */
+  .admin-nav-btn { padding: 6px 9px; gap: 0; }
+  .admin-nav-btn .admin-nav-btn-label { display: none; }
+  .admin-badge { font-size: 10px; padding: 4px 8px; }
   .hero { min-height: 78vh; }
   .hero-meta { flex-wrap: wrap; gap: 8px 14px; }
   .gallery-section-head { flex-direction: column; align-items: flex-start; gap: 8px; }
