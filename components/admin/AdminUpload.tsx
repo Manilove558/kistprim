@@ -136,6 +136,16 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
             </div>
           )}
 
+          <label className="admin-label">Detail (sab photos par same lagega, optional)</label>
+          <textarea
+            value={detail}
+            onChange={(e) => setDetail(e.target.value)}
+            className="admin-textarea"
+            rows={2}
+            maxLength={500}
+            placeholder="Event ke baare me ek line"
+          />
+
           <label className="admin-label">Album (optional)</label>
           <input
             value={album}
@@ -148,16 +158,6 @@ export default function AdminUpload({ albums, onClose, onAddMany }: Props) {
           <datalist id="album-options">
             {albums.map((a) => <option key={a} value={a} />)}
           </datalist>
-
-          <label className="admin-label">Detail (sab photos par same lagega, optional)</label>
-          <textarea
-            value={detail}
-            onChange={(e) => setDetail(e.target.value)}
-            className="admin-textarea"
-            rows={2}
-            maxLength={500}
-            placeholder="Event ke baare me ek line"
-          />
 
           {error && <p className="admin-error">{error}</p>}
           <button className="admin-btn" onClick={handleUpload} disabled={uploading || picked.length === 0}>
