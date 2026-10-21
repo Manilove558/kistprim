@@ -555,7 +555,7 @@ export default function Page() {
           <span>{copy.footerHint}</span>
          <a
             className="journal-link"
-            href="https://www.instagram.com/reel/DdYwxvXgfjW/?stkn=MXhpMW9jNjVubmVocg=="
+            href="https://www.instagram.com/_umar.0o?rpxt=eTZsY2E2cHY5d2Rx"
             target="_blank"
             rel="noreferrer"
           >
